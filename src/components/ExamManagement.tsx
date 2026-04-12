@@ -164,11 +164,9 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
             />
           </div>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Download className="w-4 h-4" />
-                Export
-              </Button>
+            <DropdownMenuTrigger render={<Button variant="outline" className="gap-2" />}>
+              <Download className="w-4 h-4" />
+              Export
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={exportToExcel}>Export as Excel</DropdownMenuItem>
