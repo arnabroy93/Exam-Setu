@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "student", "examiner"] },
+        "createdAt": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Stores exam details and questions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "instructions": { "type": "string" },
+        "duration": { "type": "number", "description": "Duration in minutes" },
+        "startTime": { "type": "number", "description": "Start time timestamp" },
+        "endTime": { "type": "number", "description": "End time timestamp" },
+        "questions": { "type": "array", "description": "List of questions" },
+        "createdBy": { "type": "string", "description": "Admin/Examiner UID" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "createdAt": { "type": "number" },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "enableAntiCheating": { "type": "boolean" },
+            "requirePassword": { "type": "string" },
+            "shuffleQuestions": { "type": "boolean" },
+            "showOneAtATime": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["title", "duration", "questions", "createdBy", "status", "createdAt", "settings"]
+    },
+    "ExamAttempt": {
+      "title": "Exam Attempt",
+      "description": "Stores student responses and results.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "answers": { "type": "object" },
+        "startTime": { "type": "number" },
+        "endTime": { "type": "number" },
+        "status": { "type": "string", "enum": ["in-progress", "submitted", "graded"] },
+        "score": { "type": "number" },
+        "feedback": { "type": "string" },
+        "suspiciousActivity": { "type": "array" }
+      },
+      "required": ["examId", "studentId", "startTime", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "User profiles indexed by UID."
+    },
+    "/exams/{examId}": {
+      "schema": "Exam",
+      "description": "Exam definitions."
+    },
+    "/attempts/{attemptId}": {
+      "schema": "ExamAttempt",
+      "description": "Student exam attempts."
+    }
+  }
+}

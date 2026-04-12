@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (required)
+    //   - role: string (required, ['admin', 'student', 'examiner'])
+    //   - createdAt: number (required)
+    //
+    // Collection: exams
+    // Document ID: {examId}
+    // Fields:
+    //   - title: string (required)
+    //   - description: string
+    //   - duration: number (required)
+    //   - questions: list (required)
+    //   - createdBy: string (required)
+    //   - status: string (required, ['draft', 'published', 'archived'])
+    //   - createdAt: number (required)
+    //
+    // Collection: attempts
+    // Document ID: {attemptId}
+    // Fields:
+    //   - examId: string (required)
+    //   - studentId: string (required)
+    //   - answers: map (required)
+    //   - startTime: number (required)
+    //   - endTime: number
+    //   - status: string (required, ['in-progress', 'submitted', 'graded'])
+    //   - score: number
+    //   - suspiciousActivity: list
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email in ["arnab.roy@anudip.org", "piem@anudip.org", "arnabredmi3sprime@gmail.com"] && request.auth.token.email_verified == true)
+        );
+    }
+
+    function isExaminer() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'examiner';
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.displayName is string &&
+             data.role in ['admin', 'student', 'examiner'] &&
+             data.createdAt is number;
+    }
+
+    function isValidExam(data) {
+      let requiredFields = ['title', 'duration', 'questions', 'createdBy', 'status', 'createdAt', 'settings'];
+      return data.keys().hasAll(requiredFields) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.duration is number && data.duration > 0 &&
+             data.questions is list &&
+             data.createdBy is string &&
+             data.status in ['draft', 'published', 'archived'] &&
+             data.createdAt is number &&
+             data.settings is map &&
+             data.settings.enableAntiCheating is bool &&
+             data.settings.shuffleQuestions is bool &&
+             data.settings.showOneAtATime is bool &&
+             (!('restrictAttempts' in data.settings) || data.settings.restrictAttempts is bool) &&
+             (!('requirePassword' in data.settings) || data.settings.requirePassword is string) &&
+             (!('allowedStudents' in data.settings) || (data.settings.allowedStudents is list && data.settings.allowedStudents.size() < 1000)) &&
+             (!('description' in data) || data.description is string) &&
+             (!('instructions' in data) || data.instructions is string) &&
+             (!('startTime' in data) || data.startTime is number) &&
+             (!('endTime' in data) || data.endTime is number);
+    }
+
+    function isValidAttempt(data) {
+      return data.keys().hasAll(['examId', 'studentId', 'startTime', 'status']) &&
+             data.examId is string &&
+             data.studentId is string &&
+             data.startTime is number &&
+             data.status in ['in-progress', 'submitted', 'graded'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role != 'admin' || isAdmin());
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) ||
+                      (isAdmin() && isValidUser(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /exams/{examId} {
+      allow read: if isAuthenticated();
+      allow create: if (isAdmin() || isExaminer()) && isValidExam(request.resource.data);
+      allow update: if (isAdmin() || (isExaminer() && resource.data.createdBy == request.auth.uid)) && isValidExam(request.resource.data);
+      allow delete: if isAdmin() || (isExaminer() && resource.data.createdBy == request.auth.uid);
+    }
+
+    match /attempts/{attemptId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.studentId) || isAdmin() || isExaminer());
+      allow create: if isAuthenticated() && isOwner(request.resource.data.studentId) && isValidAttempt(request.resource.data);
+      allow update: if isAuthenticated() && 
+                      (
+                        (isOwner(resource.data.studentId) && isValidAttempt(request.resource.data) && request.resource.data.status == 'submitted') ||
+                        (isAdmin() || isExaminer())
+                      );
+      allow delete: if isAdmin() || isExaminer();
+    }
+  }
+}
