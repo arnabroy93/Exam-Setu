@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -711,7 +711,7 @@ export const StudentReports: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="outline" size="default" disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteStudents} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {isDeleting ? 'Deleting...' : 'Delete Records'}
             </AlertDialogAction>
@@ -729,7 +729,7 @@ export const StudentReports: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isResettingAttempt}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="outline" size="default" disabled={isResettingAttempt}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetAttempt} disabled={isResettingAttempt} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {isResettingAttempt ? 'Resetting...' : 'Reset Attempt'}
             </AlertDialogAction>

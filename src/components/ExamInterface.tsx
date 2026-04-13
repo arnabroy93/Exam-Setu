@@ -526,10 +526,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                   </div>
                 )}
 
-                {currentQuestion.type === 'short' && (
+                {(currentQuestion.type === 'short' || currentQuestion.type === 'long') && (
                   <textarea
-                    className="w-full min-h-[200px] p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all"
-                    placeholder="Type your answer here..."
+                    className={`w-full ${currentQuestion.type === 'long' ? 'min-h-[400px]' : 'min-h-[200px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
+                    placeholder={currentQuestion.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
                     value={answers[currentQuestion.id] || ''}
                     onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
                   />
@@ -641,10 +641,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     </div>
                   )}
 
-                  {q.type === 'short' && (
+                  {(q.type === 'short' || q.type === 'long') && (
                     <textarea
-                      className="w-full min-h-[150px] p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all"
-                      placeholder="Type your answer here..."
+                      className={`w-full ${q.type === 'long' ? 'min-h-[300px]' : 'min-h-[150px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
+                      placeholder={q.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
                       value={answers[q.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                     />

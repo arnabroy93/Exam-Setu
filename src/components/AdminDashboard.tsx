@@ -319,7 +319,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="outline" size="default" disabled={isResetting}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetAttempt} disabled={isResetting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {isResetting ? 'Resetting...' : 'Reset Attempt'}
             </AlertDialogAction>
