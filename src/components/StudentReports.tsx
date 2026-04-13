@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
-import { calculateAutoScore } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -102,9 +102,10 @@ export const StudentReports: React.FC = () => {
     // Group attempts by examId to find the best attempt for each exam
     const attemptsByExam: Record<string, ExamAttempt> = {};
     studentAttempts.forEach(attempt => {
+      const exam = exams.find(e => e.id === attempt.examId);
       const currentBest = attemptsByExam[attempt.examId];
-      const attemptScore = attempt.score ?? attempt.autoScore ?? 0;
-      const currentBestScore = currentBest ? (currentBest.score ?? currentBest.autoScore ?? 0) : -1;
+      const attemptScore = calculateTotalObtained(attempt, exam);
+      const currentBestScore = currentBest ? calculateTotalObtained(currentBest, exams.find(e => e.id === currentBest.examId)) : -1;
       
       if (!currentBest || attemptScore > currentBestScore) {
         attemptsByExam[attempt.examId] = attempt;
@@ -120,8 +121,8 @@ export const StudentReports: React.FC = () => {
       if (exam) {
         const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
         totalFullMarks += examFullMarks;
+        totalScore += calculateTotalObtained(attempt, exam);
       }
-      totalScore += attempt.score ?? attempt.autoScore ?? 0;
     });
 
     studentAttempts.forEach(attempt => {
@@ -270,9 +271,9 @@ export const StudentReports: React.FC = () => {
         'Student Name': s.displayName,
         'Email': s.email,
         'Exams Taken': stats.attemptsCount,
-        'Total Marks': stats.totalScore,
+        'Total Marks Obtained': stats.totalScore,
         'Full Marks': stats.totalFullMarks,
-        'Percentage': `${stats.percentage.toFixed(2)}%`
+        'Overall Percentage': `${stats.percentage.toFixed(2)}%`
       };
     });
 
@@ -452,7 +453,7 @@ export const StudentReports: React.FC = () => {
                   subjectiveMarks = (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0);
                 }
 
-                const currentTotalScore = attempt.score ?? (mcqMarks + subjectiveMarks);
+                const currentTotalScore = calculateTotalObtained(attempt, exam);
                 const attemptPercentage = examFullMarks > 0 ? (currentTotalScore / examFullMarks) * 100 : 0;
 
                 return (
@@ -478,7 +479,7 @@ export const StudentReports: React.FC = () => {
                                 <p className="text-lg font-bold">{subjectiveMarks}</p>
                               </div>
                               <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-                                <p className="text-[10px] uppercase font-bold text-primary tracking-wider mb-1">Total Marks</p>
+                                <p className="text-[10px] uppercase font-bold text-primary tracking-wider mb-1">Total Marks Obtained</p>
                                 <p className="text-lg font-bold text-primary">{currentTotalScore} / {examFullMarks}</p>
                               </div>
                             </div>
@@ -781,9 +782,9 @@ export const StudentReports: React.FC = () => {
                   </TableHead>
                   <TableHead>Student Name</TableHead>
                   <TableHead>Exams Taken</TableHead>
-                  <TableHead>Total Marks</TableHead>
+                  <TableHead>Total Marks Obtained</TableHead>
                   <TableHead>Full Marks</TableHead>
-                  <TableHead>Percentage</TableHead>
+                  <TableHead>Overall Percentage</TableHead>
                   <TableHead>Last Submission</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>

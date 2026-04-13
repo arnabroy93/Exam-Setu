@@ -3,7 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
-import { isAnswerCorrect } from '../lib/gradingUtils';
+import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,7 +43,8 @@ export const ResultsView: React.FC = () => {
   if (selectedAttempt) {
     const exam = selectedAttempt.exam;
     const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
-    const percentage = examFullMarks > 0 ? ((selectedAttempt.score || 0) / examFullMarks) * 100 : 0;
+    const currentScore = calculateTotalObtained(selectedAttempt, exam);
+    const percentage = examFullMarks > 0 ? (currentScore / examFullMarks) * 100 : 0;
 
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -58,16 +59,16 @@ export const ResultsView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-primary/5 border-primary/10">
             <CardContent className="p-6">
-              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Score Obtained</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Marks Obtained</p>
               <div className="flex items-baseline gap-2 mt-1">
-                <p className="text-3xl font-bold text-primary">{selectedAttempt.score}</p>
+                <p className="text-3xl font-bold text-primary">{currentScore}</p>
                 <p className="text-sm text-muted-foreground">/ {examFullMarks}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-green-500/5 border-green-500/10">
             <CardContent className="p-6">
-              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Percentage</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Overall Percentage</p>
               <p className={`text-3xl font-bold mt-1 ${percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
                 {percentage.toFixed(2)}%
               </p>
@@ -222,10 +223,8 @@ export const ResultsView: React.FC = () => {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
                     <p className="text-2xl font-bold text-primary">
-                      {attempt.status === 'submitted' ? (
-                        <span className="text-sm font-normal text-yellow-600 italic">Grading in progress...</span>
-                      ) : attempt.isPublished ? (
-                        attempt.score !== undefined ? attempt.score : 'Pending'
+                      {attempt.isPublished ? (
+                        `${calculateTotalObtained(attempt, attempt.exam)}`
                       ) : (
                         <span className="text-sm font-normal text-muted-foreground italic">Score not published yet</span>
                       )}

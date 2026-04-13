@@ -1,4 +1,4 @@
-import { Question } from '../types';
+import { Question, Exam, ExamAttempt } from '../types';
 
 export const isAnswerCorrect = (question: Question, studentAnswer: any): boolean => {
   if (studentAnswer === undefined || studentAnswer === null || studentAnswer === '') return false;
@@ -37,4 +37,19 @@ export const calculateAutoScore = (questions: Question[], answers: Record<string
     }
   });
   return score;
+};
+
+export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): number => {
+  // Use stored score if available and graded
+  if (attempt.status === 'graded' && attempt.score !== undefined) {
+    return attempt.score;
+  }
+
+  // Otherwise calculate from autoScore and manualGrades
+  const autoScore = attempt.autoScore ?? (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
+  const manualTotal = attempt.manualGrades 
+    ? (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0)
+    : 0;
+  
+  return autoScore + manualTotal;
 };
