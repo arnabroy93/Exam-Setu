@@ -86,7 +86,35 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     console.warn(`Suspicious activity: ${type} - ${details}`);
   }, []);
 
+  // Sync attempt to Firestore for live monitoring
+  useEffect(() => {
+    if (!hasStarted || isSubmitted || !profile) return;
+
+    const syncAttempt = async () => {
+      const attempt: ExamAttempt = {
+        id: attemptId,
+        examId: exam.id,
+        studentId: profile.uid,
+        answers,
+        startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
+        status: 'in-progress',
+        suspiciousActivity: logs,
+      };
+
+      try {
+        await setDoc(doc(db, 'attempts', attemptId), attempt);
+      } catch (error) {
+        console.error('Error syncing attempt:', error);
+      }
+    };
+
+    const timeoutId = setTimeout(syncAttempt, 2000); // Debounce sync
+    return () => clearTimeout(timeoutId);
+  }, [hasStarted, isSubmitted, profile, attemptId, exam.id, exam.duration, answers, logs, endTime]);
+
   const submitExam = useCallback(async () => {
+    if (isSubmitting) return;
+    
     // Auto-grading for MCQ and Boolean
     let score = 0;
     shuffledQuestions.forEach(q => {
@@ -115,7 +143,6 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       setIsSubmitting(true);
       await setDoc(doc(db, 'attempts', attemptId), attempt);
       setIsSubmitted(true);
-      setIsSubmitting(false);
       
       // Stop media tracks
       if (mediaStream) {
@@ -123,9 +150,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       }
     } catch (error) {
       console.error('Error submitting exam:', error);
+    } finally {
       setIsSubmitting(false);
     }
-  }, [attemptId, exam, profile?.uid, answers, endTime, logs, onFinish, shuffledQuestions, mediaStream]);
+  }, [attemptId, exam, profile?.uid, answers, endTime, logs, shuffledQuestions, mediaStream, isSubmitting]);
 
   // Anti-cheating: Tab switch detection
   useEffect(() => {
@@ -137,15 +165,9 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       }
     };
 
-    const handleBlur = () => {
-      addLog('tab-switch', 'Window lost focus');
-    };
-
     window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleBlur);
     };
   }, [addLog]);
 
@@ -362,23 +384,23 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-2xl w-full p-8 space-y-8">
+          <Card className="max-w-2xl w-full p-6 md:p-8 space-y-6 md:space-y-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-2xl">{exam.title}</CardTitle>
+                <CardTitle className="text-xl md:text-2xl">{exam.title}</CardTitle>
                 <p className="text-sm text-muted-foreground">Ready to begin your examination?</p>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <h4 className="font-bold flex items-center gap-2">
+            <div className="space-y-3">
+              <h4 className="font-bold flex items-center gap-2 text-sm md:text-base">
                 <Eye className="w-4 h-4 text-primary" />
                 Exam Instructions
               </h4>
-              <div className="p-6 bg-muted/50 rounded-xl border border-border prose prose-sm max-w-none">
+              <div className="p-4 md:p-6 bg-muted/50 rounded-xl border border-border prose prose-sm max-w-none max-h-48 overflow-y-auto">
                 <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
                   {exam.instructions || 'Please read all questions carefully. Your progress will be saved automatically.'}
                 </p>
