@@ -48,12 +48,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userDoc = await getDoc(userDocRef);
       
       const defaultAdmins = ['arnab.roy@anudip.org', 'piem@anudip.org'];
+      const defaultExaminers = ['rashmi.mukherjee@anudip.org'];
 
       if (!userDoc.exists()) {
         let finalRole = role;
         
         // If trying to sign up as admin but not in default list, force to student
         if (role === 'admin' && !defaultAdmins.includes(firebaseUser.email || '')) {
+          finalRole = 'student';
+        }
+
+        // If trying to sign up as examiner but not in default list, force to student
+        if (role === 'examiner' && !defaultExaminers.includes(firebaseUser.email || '')) {
           finalRole = 'student';
         }
 
@@ -69,10 +75,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const existingProfile = userDoc.data() as UserProfile;
         
-        // If user is a default admin but doesn't have the admin role in DB, upgrade them
+        // Auto-upgrade logic for default roles if they exist but have wrong role
         if (defaultAdmins.includes(firebaseUser.email || '') && existingProfile.role !== 'admin') {
           const updatedProfile = { ...existingProfile, role: 'admin' as const };
           await updateDoc(userDocRef, { role: 'admin' });
+          setProfile(updatedProfile);
+        } else if (defaultExaminers.includes(firebaseUser.email || '') && existingProfile.role !== 'examiner' && existingProfile.role !== 'admin') {
+          // Upgrade to examiner if in list and not already admin
+          const updatedProfile = { ...existingProfile, role: 'examiner' as const };
+          await updateDoc(userDocRef, { role: 'examiner' });
           setProfile(updatedProfile);
         } else {
           setProfile(existingProfile);
