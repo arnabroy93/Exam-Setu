@@ -352,7 +352,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                     <div className="text-right">
                       <div className="flex flex-col items-end gap-1">
                         <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'}>
-                          {attempt.status === 'submitted' ? 'Pending Grading' : (attempt.score !== undefined ? `${attempt.score} pts` : attempt.status)}
+                          {attempt.status === 'submitted' ? 'Pending Grading' : (attempt.score !== undefined ? `${attempt.score} Marks` : attempt.status)}
                         </Badge>
                         {attempt.isPublished ? (
                           <span className="text-[10px] text-green-600 font-bold flex items-center gap-0.5">

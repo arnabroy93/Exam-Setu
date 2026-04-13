@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -91,8 +91,6 @@ export const StudentReports: React.FC = () => {
 
   const getStudentStats = (studentId: string) => {
     const studentAttempts = attempts.filter(a => a.studentId === studentId && (a.status === 'submitted' || a.status === 'graded'));
-    let totalRight = 0;
-    let totalWrong = 0;
     let totalScore = 0;
     let totalFullMarks = 0;
     let lastSubmissionTime = 0;
@@ -102,17 +100,6 @@ export const StudentReports: React.FC = () => {
       if (exam) {
         const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
         totalFullMarks += examFullMarks;
-        
-        exam.questions.forEach(q => {
-          const answer = attempt.answers[q.id];
-          if (answer !== undefined) {
-            if (JSON.stringify(answer) === JSON.stringify(q.correctAnswer)) {
-              totalRight++;
-            } else {
-              totalWrong++;
-            }
-          }
-        });
       }
       totalScore += attempt.score || 0;
       const submissionTime = attempt.endTime || attempt.startTime;
@@ -125,8 +112,6 @@ export const StudentReports: React.FC = () => {
 
     return {
       attemptsCount: studentAttempts.length,
-      totalRight,
-      totalWrong,
       totalScore,
       totalFullMarks,
       percentage,
@@ -262,9 +247,9 @@ export const StudentReports: React.FC = () => {
         'Student Name': s.displayName,
         'Email': s.email,
         'Exams Taken': stats.attemptsCount,
-        'Total Right': stats.totalRight,
-        'Total Wrong': stats.totalWrong,
-        'Total Marks': stats.totalScore
+        'Total Marks': stats.totalScore,
+        'Full Marks': stats.totalFullMarks,
+        'Percentage': `${stats.percentage.toFixed(2)}%`
       };
     });
 
@@ -422,8 +407,6 @@ export const StudentReports: React.FC = () => {
                   </TableHead>
                   <TableHead>Student Name</TableHead>
                   <TableHead>Exams Taken</TableHead>
-                  <TableHead>Total Right</TableHead>
-                  <TableHead>Total Wrong</TableHead>
                   <TableHead>Total Marks</TableHead>
                   <TableHead>Full Marks</TableHead>
                   <TableHead>Percentage</TableHead>
@@ -462,8 +445,6 @@ export const StudentReports: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>{stats.attemptsCount}</TableCell>
-                        <TableCell onClick={() => handleStudentClick(student)} className="text-green-600 font-medium">{stats.totalRight}</TableCell>
-                        <TableCell onClick={() => handleStudentClick(student)} className="text-destructive font-medium">{stats.totalWrong}</TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>
                           <Badge variant="secondary">{stats.totalScore}</Badge>
                         </TableCell>
@@ -543,9 +524,9 @@ export const StudentReports: React.FC = () => {
 
           <ScrollArea className="flex-1 p-6">
             <div className="max-w-6xl mx-auto space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {(() => {
-                  const stats = selectedStudent ? getStudentStats(selectedStudent.uid) : { attemptsCount: 0, totalRight: 0, totalWrong: 0, totalScore: 0, totalFullMarks: 0, percentage: 0 };
+                  const stats = selectedStudent ? getStudentStats(selectedStudent.uid) : { attemptsCount: 0, totalScore: 0, totalFullMarks: 0, percentage: 0 };
                   return (
                     <>
                       <Card className="bg-primary/5 border-primary/10">
@@ -563,18 +544,6 @@ export const StudentReports: React.FC = () => {
                           <p className={`text-3xl font-bold mt-1 ${stats.percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
                             {stats.percentage.toFixed(2)}%
                           </p>
-                        </CardContent>
-                      </Card>
-                      <Card className="bg-blue-500/5 border-blue-500/10">
-                        <CardContent className="p-6">
-                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Correct</p>
-                          <p className="text-3xl font-bold text-blue-600 mt-1">{stats.totalRight}</p>
-                        </CardContent>
-                      </Card>
-                      <Card className="bg-destructive/5 border-destructive/10">
-                        <CardContent className="p-6">
-                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Incorrect</p>
-                          <p className="text-3xl font-bold text-destructive mt-1">{stats.totalWrong}</p>
                         </CardContent>
                       </Card>
                     </>
@@ -719,73 +688,120 @@ export const StudentReports: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Manual Grading Dialog */}
+      {/* Manual Grading Full Screen Dialog */}
       <Dialog open={!!gradingAttempt} onOpenChange={(open) => !open && setGradingAttempt(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Manual Grading</DialogTitle>
-            <DialogDescription>
-              Grade subjective questions for {students.find(s => s.uid === gradingAttempt?.studentId)?.displayName}'s attempt.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-[100vw] w-screen h-screen m-0 rounded-none overflow-hidden flex flex-col p-0">
+          <div className="h-16 border-b flex items-center justify-between px-6 bg-card shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-600 font-bold">
+                G
+              </div>
+              <div>
+                <DialogTitle className="text-xl">Manual Grading Interface</DialogTitle>
+                <DialogDescription>
+                  Grading {students.find(s => s.uid === gradingAttempt?.studentId)?.displayName}'s subjective responses
+                </DialogDescription>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => setGradingAttempt(null)}>
+              <XCircle className="w-6 h-6" />
+            </Button>
+          </div>
           
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-6 py-4">
+          <ScrollArea className="flex-1 p-6">
+            <div className="max-w-4xl mx-auto space-y-8">
               {(() => {
                 const exam = exams.find(e => e.id === gradingAttempt?.examId);
                 const subjectiveQuestions = exam?.questions.filter(q => q.type === 'short' || q.type === 'long') || [];
                 
-                return subjectiveQuestions.map((q, idx) => (
-                  <Card key={q.id} className="border-primary/10">
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-sm font-bold">Question {idx + 1}</CardTitle>
-                        <Badge variant="outline">{q.points} Max</Badge>
-                      </div>
-                      <p className="text-sm mt-1">{q.text}</p>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="p-3 bg-muted rounded-lg border border-border">
-                        <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Student Answer:</p>
-                        <p className="text-sm whitespace-pre-wrap">{gradingAttempt?.answers[q.id] || <span className="italic text-muted-foreground">No answer provided</span>}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <label className="text-xs font-bold text-muted-foreground uppercase">Award Marks:</label>
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            max={q.points} 
-                            step="0.5"
-                            value={manualGrades[q.id] || 0}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              if (val > q.points) {
-                                setManualGrades(prev => ({ ...prev, [q.id]: q.points }));
-                              } else if (val < 0) {
-                                setManualGrades(prev => ({ ...prev, [q.id]: 0 }));
-                              } else {
-                                setManualGrades(prev => ({ ...prev, [q.id]: val }));
-                              }
-                            }}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div className="pt-5">
-                          <span className="text-sm font-medium">/ {q.points}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ));
+                if (subjectiveQuestions.length === 0) {
+                  return (
+                    <div className="text-center py-12 border-2 border-dashed rounded-2xl">
+                      <p className="text-muted-foreground">No subjective questions to grade for this exam.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {subjectiveQuestions.map((q, idx) => (
+                      <Card key={q.id} className="border-2 border-primary/5 shadow-sm overflow-hidden">
+                        <div className="h-1 bg-primary/20" />
+                        <CardHeader className="pb-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-primary uppercase tracking-widest">Question {idx + 1}</p>
+                              <CardTitle className="text-lg leading-relaxed">{q.text}</CardTitle>
+                            </div>
+                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                              {q.points} Max Marks
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                          <div className="p-6 bg-muted/30 rounded-2xl border-2 border-dashed">
+                            <p className="text-xs font-bold text-muted-foreground uppercase mb-3 tracking-wider">Student's Response:</p>
+                            <p className="text-base leading-relaxed whitespace-pre-wrap">
+                              {gradingAttempt?.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
+                            </p>
+                          </div>
+                          
+                          <div className="flex flex-col md:flex-row items-end gap-6 pt-4 border-t">
+                            <div className="flex-1 w-full">
+                              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2 block">Award Marks:</label>
+                              <div className="flex items-center gap-3">
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max={q.points} 
+                                  step="0.5"
+                                  value={manualGrades[q.id] || 0}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (val > q.points) {
+                                      setManualGrades(prev => ({ ...prev, [q.id]: q.points }));
+                                    } else if (val < 0) {
+                                      setManualGrades(prev => ({ ...prev, [q.id]: 0 }));
+                                    } else {
+                                      setManualGrades(prev => ({ ...prev, [q.id]: val }));
+                                    }
+                                  }}
+                                  className="text-lg font-bold h-12"
+                                />
+                                <span className="text-xl font-bold text-muted-foreground">/ {q.points}</span>
+                              </div>
+                            </div>
+                            <div className="shrink-0">
+                              <Badge variant={manualGrades[q.id] > 0 ? "default" : "secondary"} className="h-12 px-6 text-sm">
+                                {manualGrades[q.id] || 0} Marks Awarded
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                );
               })()}
             </div>
           </ScrollArea>
 
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <Button variant="ghost" onClick={() => setGradingAttempt(null)}>Cancel</Button>
-            <Button onClick={handleSaveManualGrades} disabled={isSavingGrades}>
-              {isSavingGrades ? 'Saving...' : 'Complete Grading'}
+          <div className="h-20 border-t bg-card flex items-center justify-end px-8 gap-4 shrink-0">
+            <Button variant="outline" onClick={() => setGradingAttempt(null)} disabled={isSavingGrades}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveManualGrades} disabled={isSavingGrades} className="px-8">
+              {isSavingGrades ? (
+                <>
+                  <Clock className="w-4 h-4 mr-2 animate-spin" />
+                  Saving Marks...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Finalize & Save Marks
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

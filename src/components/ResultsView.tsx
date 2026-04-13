@@ -152,8 +152,6 @@ export const ResultsView: React.FC = () => {
                           <p className="font-medium">{q.text}</p>
                         </div>
                         <Badge variant="outline" className="shrink-0">
-                          {isCorrect === true && <CheckCircle2 className="w-3 h-3 mr-1 text-green-600" />}
-                          {isCorrect === false && <XCircle className="w-3 h-3 mr-1 text-destructive" />}
                           {q.points} Marks
                         </Badge>
                       </div>
