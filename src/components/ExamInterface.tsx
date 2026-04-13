@@ -40,6 +40,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [hasAttempted, setHasAttempted] = useState(false);
   const [checkingAttempt, setCheckingAttempt] = useState(exam.settings?.restrictAttempts);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!exam.settings?.restrictAttempts || !profile) {
@@ -113,35 +114,41 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   }, [hasStarted, isSubmitted, profile, attemptId, exam.id, exam.duration, answers, logs, endTime]);
 
   const submitExam = useCallback(async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || isSubmitted) return;
     
-    // Auto-grading for MCQ and Boolean
-    let score = 0;
-    shuffledQuestions.forEach(q => {
-      if (q.type === 'mcq' || q.type === 'boolean') {
-        if (answers[q.id] === q.correctAnswer) {
-          score += q.points;
-        }
-      }
-    });
-
-    const hasSubjective = shuffledQuestions.some(q => q.type === 'short' || q.type === 'long');
-
-    const attempt: ExamAttempt = {
-      id: attemptId,
-      examId: exam.id,
-      studentId: profile?.uid || '',
-      answers,
-      startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
-      endTime: Date.now(),
-      status: hasSubjective ? 'submitted' : 'graded',
-      score: hasSubjective ? undefined : score,
-      suspiciousActivity: logs,
-    };
+    console.log('Initiating exam submission...');
+    setSubmissionError(null);
+    setIsSubmitting(true);
 
     try {
-      setIsSubmitting(true);
+      // Auto-grading for MCQ and Boolean
+      let score = 0;
+      shuffledQuestions.forEach(q => {
+        if (q.type === 'mcq' || q.type === 'boolean') {
+          if (answers[q.id] === q.correctAnswer) {
+            score += q.points;
+          }
+        }
+      });
+
+      const hasSubjective = shuffledQuestions.some(q => q.type === 'short' || q.type === 'long');
+
+      const attempt: ExamAttempt = {
+        id: attemptId,
+        examId: exam.id,
+        studentId: profile?.uid || '',
+        answers,
+        startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
+        endTime: Date.now(),
+        status: hasSubjective ? 'submitted' : 'graded',
+        score: hasSubjective ? undefined : score,
+        suspiciousActivity: logs,
+      };
+
+      console.log('Submitting attempt to Firestore:', attemptId);
       await setDoc(doc(db, 'attempts', attemptId), attempt);
+      console.log('Submission successful');
+      
       setIsSubmitted(true);
       setIsSubmitDialogOpen(false);
       
@@ -149,12 +156,12 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting exam:', error);
-    } finally {
-      setIsSubmitting(false);
+      setSubmissionError(error.message || 'Failed to submit exam. Please check your connection and try again.');
+      setIsSubmitting(false); // Only reset if it failed, so user can retry
     }
-  }, [attemptId, exam, profile?.uid, answers, endTime, logs, shuffledQuestions, mediaStream, isSubmitting]);
+  }, [attemptId, exam, profile?.uid, answers, endTime, logs, shuffledQuestions, mediaStream, isSubmitting, isSubmitted]);
 
   // Anti-cheating: Tab switch detection
   useEffect(() => {
@@ -690,7 +697,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         )}
       </main>
 
-      <AlertDialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
+      <AlertDialog open={isSubmitDialogOpen} onOpenChange={(open) => !isSubmitting && setIsSubmitDialogOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ready to submit?</AlertDialogTitle>
@@ -698,18 +705,33 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
               Please make sure you have answered all questions. You cannot change your answers after submission.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel variant="outline" size="default">Review Answers</AlertDialogCancel>
-            <AlertDialogAction 
+          
+          {submissionError && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive text-sm animate-in fade-in zoom-in-95">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <p>{submissionError}</p>
+            </div>
+          )}
+
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel variant="outline" size="default" disabled={isSubmitting}>
+              Review Answers
+            </AlertDialogCancel>
+            <Button 
               onClick={(e) => {
                 e.preventDefault();
                 submitExam();
               }} 
               disabled={isSubmitting}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 min-w-[140px]"
             >
-              {isSubmitting ? 'Submitting...' : 'Confirm Submission'}
-            </AlertDialogAction>
+              {isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Submitting...
+                </div>
+              ) : 'Confirm Submission'}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
