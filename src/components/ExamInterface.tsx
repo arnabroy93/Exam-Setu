@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Exam, ExamAttempt, ActivityLog } from '../types';
-import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
@@ -506,149 +506,35 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       )}
 
       {/* Main Content */}
-      <main className="flex-1 max-w-4xl mx-auto w-full p-8 space-y-8">
-        {exam.settings?.showOneAtATime ? (
-          <>
-            <Card className="border-2 border-primary/10 shadow-lg">
-              <CardHeader className="pb-4">
-                <div className="flex justify-between items-start">
-                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {currentQuestionIdx + 1}</span>
-                  <Badge variant="secondary">{currentQuestion.points} Points</Badge>
-                </div>
-                <CardTitle className="text-2xl mt-4 leading-relaxed">
-                  {currentQuestion.text}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6">
-                {currentQuestion.type === 'mcq' && (
-                  <div className="grid gap-4">
-                    {currentQuestion.options?.map((opt, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setAnswers({ ...answers, [currentQuestion.id]: opt })}
-                        className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all text-left ${
-                          answers[currentQuestion.id] === opt 
-                            ? 'border-primary bg-primary/5 shadow-md' 
-                            : 'border-border hover:border-primary/30 hover:bg-muted/50'
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold ${
-                          answers[currentQuestion.id] === opt ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
-                        }`}>
-                          {String.fromCharCode(65 + idx)}
-                        </div>
-                        <span className="text-lg">{opt}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {currentQuestion.type === 'boolean' && (
-                  <div className="flex gap-6">
-                    {['true', 'false'].map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => setAnswers({ ...answers, [currentQuestion.id]: val })}
-                        className={`flex-1 p-8 rounded-xl border-2 text-2xl font-bold capitalize transition-all ${
-                          answers[currentQuestion.id] === val 
-                            ? 'border-primary bg-primary/5 shadow-md' 
-                            : 'border-border hover:border-primary/30 hover:bg-muted/50'
-                        }`}
-                      >
-                        {val}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {(currentQuestion.type === 'short' || currentQuestion.type === 'long') && (
-                  <textarea
-                    className={`w-full ${currentQuestion.type === 'long' ? 'min-h-[400px]' : 'min-h-[200px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
-                    placeholder={currentQuestion.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
-                    value={answers[currentQuestion.id] || ''}
-                    onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Navigation */}
-            <div className="flex items-center justify-between pt-4">
-              <Button
-                variant="outline"
-                size="lg"
-                disabled={currentQuestionIdx === 0}
-                onClick={() => setCurrentQuestionIdx(prev => prev - 1)}
-                className="h-14 px-8 text-lg"
-              >
-                <ChevronLeft className="mr-2 w-6 h-6" />
-                Previous
-              </Button>
-              
-              <div className="flex flex-wrap gap-2 justify-center max-w-md mx-auto">
-                {shuffledQuestions.map((q, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={() => setCurrentQuestionIdx(idx)}
-                    className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all ${
-                      idx === currentQuestionIdx 
-                        ? 'border-primary bg-primary text-primary-foreground shadow-md scale-110 z-10' 
-                        : answers[q.id] 
-                          ? 'border-primary/40 bg-primary/10 text-primary' 
-                          : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/20'
-                    }`}
-                    title={`Question ${idx + 1}${answers[q.id] ? ' (Answered)' : ' (Unanswered)'}`}
-                  >
-                    {idx + 1}
-                  </button>
-                ))}
-              </div>
-
-              <Button
-                variant={currentQuestionIdx === shuffledQuestions.length - 1 ? 'default' : 'outline'}
-                size="lg"
-                onClick={() => {
-                  if (currentQuestionIdx === shuffledQuestions.length - 1) {
-                    setIsSubmitDialogOpen(true);
-                  } else {
-                    setCurrentQuestionIdx(prev => prev + 1);
-                  }
-                }}
-                className="h-14 px-8 text-lg"
-              >
-                {currentQuestionIdx === shuffledQuestions.length - 1 ? 'Submit Exam' : 'Next'}
-                {currentQuestionIdx !== shuffledQuestions.length - 1 && <ChevronRight className="ml-2 w-6 h-6" />}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-8">
-            {shuffledQuestions.map((q, qIdx) => (
-              <Card key={q.id} className="border-2 border-primary/10 shadow-lg">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="lg:col-span-3 space-y-8">
+          {exam.settings?.showOneAtATime ? (
+            <>
+              <Card className="border-2 border-primary/10 shadow-lg">
                 <CardHeader className="pb-4">
                   <div className="flex justify-between items-start">
-                    <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {qIdx + 1}</span>
-                    <Badge variant="secondary">{q.points} Points</Badge>
+                    <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {currentQuestionIdx + 1}</span>
+                    <Badge variant="secondary">{currentQuestion.points} Points</Badge>
                   </div>
                   <CardTitle className="text-2xl mt-4 leading-relaxed">
-                    {q.text}
+                    {currentQuestion.text}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  {q.type === 'mcq' && (
+                  {currentQuestion.type === 'mcq' && (
                     <div className="grid gap-4">
-                      {q.options?.map((opt, idx) => (
+                      {currentQuestion.options?.map((opt, idx) => (
                         <button
                           key={idx}
-                          onClick={() => setAnswers({ ...answers, [q.id]: opt })}
+                          onClick={() => setAnswers({ ...answers, [currentQuestion.id]: opt })}
                           className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all text-left ${
-                            answers[q.id] === opt 
+                            answers[currentQuestion.id] === opt 
                               ? 'border-primary bg-primary/5 shadow-md' 
                               : 'border-border hover:border-primary/30 hover:bg-muted/50'
                           }`}
                         >
                           <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold ${
-                            answers[q.id] === opt ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
+                            answers[currentQuestion.id] === opt ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
                           }`}>
                             {String.fromCharCode(65 + idx)}
                           </div>
@@ -658,14 +544,14 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     </div>
                   )}
 
-                  {q.type === 'boolean' && (
+                  {currentQuestion.type === 'boolean' && (
                     <div className="flex gap-6">
                       {['true', 'false'].map((val) => (
                         <button
                           key={val}
-                          onClick={() => setAnswers({ ...answers, [q.id]: val })}
+                          onClick={() => setAnswers({ ...answers, [currentQuestion.id]: val })}
                           className={`flex-1 p-8 rounded-xl border-2 text-2xl font-bold capitalize transition-all ${
-                            answers[q.id] === val 
+                            answers[currentQuestion.id] === val 
                               ? 'border-primary bg-primary/5 shadow-md' 
                               : 'border-border hover:border-primary/30 hover:bg-muted/50'
                           }`}
@@ -676,25 +562,203 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     </div>
                   )}
 
-                  {(q.type === 'short' || q.type === 'long') && (
+                  {(currentQuestion.type === 'short' || currentQuestion.type === 'long') && (
                     <textarea
-                      className={`w-full ${q.type === 'long' ? 'min-h-[300px]' : 'min-h-[150px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
-                      placeholder={q.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
-                      value={answers[q.id] || ''}
-                      onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                      className={`w-full ${currentQuestion.type === 'long' ? 'min-h-[400px]' : 'min-h-[200px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
+                      placeholder={currentQuestion.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
+                      value={answers[currentQuestion.id] || ''}
+                      onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
                     />
                   )}
                 </CardContent>
               </Card>
-            ))}
-            <div className="flex justify-center pt-8">
-              <Button size="lg" className="h-14 px-12 text-xl" onClick={() => setIsSubmitDialogOpen(true)}>
-                <Send className="mr-2 w-6 h-6" />
-                Finish & Submit Exam
-              </Button>
+
+              {/* Navigation */}
+              <div className="flex items-center justify-between pt-4">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  disabled={currentQuestionIdx === 0}
+                  onClick={() => setCurrentQuestionIdx(prev => prev - 1)}
+                  className="h-14 px-8 text-lg"
+                >
+                  <ChevronLeft className="mr-2 w-6 h-6" />
+                  Previous
+                </Button>
+                
+                <Button
+                  variant={currentQuestionIdx === shuffledQuestions.length - 1 ? 'default' : 'outline'}
+                  size="lg"
+                  onClick={() => {
+                    if (currentQuestionIdx === shuffledQuestions.length - 1) {
+                      setIsSubmitDialogOpen(true);
+                    } else {
+                      setCurrentQuestionIdx(prev => prev + 1);
+                    }
+                  }}
+                  className="h-14 px-8 text-lg"
+                >
+                  {currentQuestionIdx === shuffledQuestions.length - 1 ? 'Submit Exam' : 'Next'}
+                  {currentQuestionIdx !== shuffledQuestions.length - 1 && <ChevronRight className="ml-2 w-6 h-6" />}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-8">
+              {shuffledQuestions.map((q, qIdx) => (
+                <Card key={q.id} id={`question-${q.id}`} className="border-2 border-primary/10 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <div className="flex justify-between items-start">
+                      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {qIdx + 1}</span>
+                      <Badge variant="secondary">{q.points} Points</Badge>
+                    </div>
+                    <CardTitle className="text-2xl mt-4 leading-relaxed">
+                      {q.text}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    {q.type === 'mcq' && (
+                      <div className="grid gap-4">
+                        {q.options?.map((opt, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setAnswers({ ...answers, [q.id]: opt })}
+                            className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all text-left ${
+                              answers[q.id] === opt 
+                                ? 'border-primary bg-primary/5 shadow-md' 
+                                : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold ${
+                              answers[q.id] === opt ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
+                            }`}>
+                              {String.fromCharCode(65 + idx)}
+                            </div>
+                            <span className="text-lg">{opt}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {q.type === 'boolean' && (
+                      <div className="flex gap-6">
+                        {['true', 'false'].map((val) => (
+                          <button
+                            key={val}
+                            onClick={() => setAnswers({ ...answers, [q.id]: val })}
+                            className={`flex-1 p-8 rounded-xl border-2 text-2xl font-bold capitalize transition-all ${
+                              answers[q.id] === val 
+                                ? 'border-primary bg-primary/5 shadow-md' 
+                                : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                            }`}
+                          >
+                            {val}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {(q.type === 'short' || q.type === 'long') && (
+                      <textarea
+                        className={`w-full ${q.type === 'long' ? 'min-h-[300px]' : 'min-h-[150px]'} p-6 rounded-xl border-2 border-border focus:border-primary outline-none text-lg transition-all`}
+                        placeholder={q.type === 'long' ? "Type your long answer here (no character limit)..." : "Type your short answer here..."}
+                        value={answers[q.id] || ''}
+                        onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+              <div className="flex justify-center pt-8">
+                <Button size="lg" className="h-14 px-12 text-xl" onClick={() => setIsSubmitDialogOpen(true)}>
+                  <Send className="mr-2 w-6 h-6" />
+                  Finish & Submit Exam
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Question Palette Sidebar */}
+        <aside className="lg:col-span-1 space-y-6">
+          <Card className="border-2 border-primary/10 shadow-lg sticky top-24">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <LayoutGrid className="w-5 h-5 text-primary" />
+                Question Palette
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-center">
+                  <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Attempted</p>
+                  <p className="text-xl font-bold text-green-700">{Object.keys(answers).length}</p>
+                </div>
+                <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg text-center">
+                  <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Left</p>
+                  <p className="text-xl font-bold text-orange-700">{shuffledQuestions.length - Object.keys(answers).length}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                {shuffledQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setCurrentQuestionIdx(idx);
+                      if (!exam.settings?.showOneAtATime) {
+                        const element = document.getElementById(`question-${q.id}`);
+                        if (element) {
+                          const headerOffset = 100;
+                          const elementPosition = element.getBoundingClientRect().top;
+                          const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+                          window.scrollTo({
+                            top: offsetPosition,
+                            behavior: "smooth"
+                          });
+                        }
+                      }
+                    }}
+                    className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                      idx === currentQuestionIdx 
+                        ? 'border-primary bg-primary text-primary-foreground shadow-md scale-110 z-10' 
+                        : answers[q.id] 
+                          ? 'border-green-500 bg-green-50 text-green-600' 
+                          : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/20'
+                    }`}
+                  >
+                    {idx + 1}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-4 border-t border-border space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-3 h-3 rounded bg-primary" />
+                  <span>Current</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-3 h-3 rounded bg-green-50 border border-green-500" />
+                  <span>Attempted</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-3 h-3 rounded bg-muted/30 border border-border" />
+                  <span>Unattempted</span>
+                </div>
+              </div>
+
+              <Button 
+                variant="outline" 
+                className="w-full mt-4" 
+                onClick={() => setIsSubmitDialogOpen(true)}
+                disabled={isSubmitting}
+              >
+                <Send className="mr-2 w-4 h-4" />
+                Finish Exam
+              </Button>
+            </CardContent>
+          </Card>
+        </aside>
       </main>
 
       <AlertDialog open={isSubmitDialogOpen} onOpenChange={(open) => !isSubmitting && setIsSubmitDialogOpen(open)}>
