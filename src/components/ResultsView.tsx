@@ -54,14 +54,26 @@ export const ResultsView: React.FC = () => {
           <h3 className="text-2xl font-bold">Examination Report</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="bg-primary/5 border-primary/10">
             <CardContent className="p-6">
-              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Score Obtained</p>
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Score</p>
               <div className="flex items-baseline gap-2 mt-1">
                 <p className="text-3xl font-bold text-primary">{selectedAttempt.score}</p>
                 <p className="text-sm text-muted-foreground">/ {examFullMarks}</p>
               </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-blue-500/5 border-blue-500/10">
+            <CardContent className="p-6">
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">MCQ Marks</p>
+              <p className="text-3xl font-bold text-blue-600 mt-1">{selectedAttempt.mcqScore || 0}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-purple-500/5 border-purple-500/10">
+            <CardContent className="p-6">
+              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Subjective Marks</p>
+              <p className="text-3xl font-bold text-purple-600 mt-1">{selectedAttempt.subjectiveScore || 0}</p>
             </CardContent>
           </Card>
           <Card className="bg-green-500/5 border-green-500/10">
@@ -70,12 +82,6 @@ export const ResultsView: React.FC = () => {
               <p className={`text-3xl font-bold mt-1 ${percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
                 {percentage.toFixed(2)}%
               </p>
-            </CardContent>
-          </Card>
-          <Card className="bg-blue-500/5 border-blue-500/10">
-            <CardContent className="p-6">
-              <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Status</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1 capitalize">{selectedAttempt.status}</p>
             </CardContent>
           </Card>
         </div>
@@ -141,7 +147,7 @@ export const ResultsView: React.FC = () => {
                 {exam?.questions.map((q, idx) => {
                   const studentAnswer = selectedAttempt.answers[q.id];
                   const isCorrect = q.type === 'mcq' || q.type === 'boolean' || q.type === 'fill' 
-                    ? JSON.stringify(studentAnswer) === JSON.stringify(q.correctAnswer)
+                    ? (Array.isArray(q.correctAnswer) ? q.correctAnswer.includes(studentAnswer) : studentAnswer === q.correctAnswer)
                     : null;
                   
                   return (
