@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                     {attempt.status === 'submitted' ? 'Pending Grading' : attempt.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{attempt.score !== undefined ? `${attempt.score} Marks` : 'N/A'}</TableCell>
+                <TableCell>{attempt.score !== undefined ? `${attempt.score}%` : 'N/A'}</TableCell>
                 <TableCell>{new Date(attempt.endTime || attempt.startTime).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)}>

@@ -33,15 +33,16 @@ declare module 'jspdf' {
 }
 
 export const StudentReports: React.FC = () => {
+  const [view, setView] = useState<'list' | 'student-details' | 'grading'>('list');
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
   const [studentAttempts, setStudentAttempts] = useState<ExamAttempt[]>([]);
-  const [selectedAttempt, setSelectedAttempt] = useState<ExamAttempt | null>(null);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [isPublishing, setIsPublishing] = useState<string | null>(null);
+  const [isPublishing, setIsPublishing] = useState<string | boolean | null>(null);
   const [gradingAttempt, setGradingAttempt] = useState<ExamAttempt | null>(null);
   const [manualGrades, setManualGrades] = useState<Record<string, number>>({});
   const [isSavingGrades, setIsSavingGrades] = useState(false);
@@ -57,9 +58,10 @@ export const StudentReports: React.FC = () => {
     try {
       await deleteDoc(doc(db, 'attempts', attemptToReset));
       setAttemptToReset(null);
-      // Also clear selected attempt if it's the one being reset
-      if (selectedAttempt?.id === attemptToReset) {
-        setSelectedAttempt(null);
+      // Update local state
+      setStudentAttempts(prev => prev.filter(a => a.id !== attemptToReset));
+      if (selectedAttemptId === attemptToReset) {
+        setSelectedAttemptId(null);
       }
     } catch (error) {
       console.error('Error resetting attempt:', error);
@@ -243,17 +245,10 @@ export const StudentReports: React.FC = () => {
   const handleExportAll = (format: 'excel' | 'csv' | 'pdf') => {
     const data = filteredStudents.map(s => {
       const stats = getStudentStats(s.uid);
-      const studentAttempts = attempts.filter(a => a.studentId === s.uid && (a.status === 'submitted' || a.status === 'graded'));
-      
-      // Get latest attempt scores
-      const latestAttempt = studentAttempts.sort((a, b) => (b.endTime || b.startTime) - (a.endTime || a.startTime))[0];
-      
       return {
         'Student Name': s.displayName,
         'Email': s.email,
         'Exams Taken': stats.attemptsCount,
-        'MCQ Marks': latestAttempt?.mcqScore || 0,
-        'Subjective Marks': latestAttempt?.subjectiveScore || 0,
         'Total Marks': stats.totalScore,
         'Full Marks': stats.totalFullMarks,
         'Percentage': `${stats.percentage.toFixed(2)}%`
@@ -268,6 +263,7 @@ export const StudentReports: React.FC = () => {
   const handleStudentClick = (student: UserProfile) => {
     setSelectedStudent(student);
     setStudentAttempts(attempts.filter(a => a.studentId === student.uid).sort((a, b) => b.startTime - a.startTime));
+    setView('student-details');
   };
 
   const handleTogglePublish = async (attempt: ExamAttempt) => {
@@ -276,6 +272,8 @@ export const StudentReports: React.FC = () => {
       await updateDoc(doc(db, 'attempts', attempt.id), {
         isPublished: !attempt.isPublished
       });
+      // Update local state for immediate feedback
+      setStudentAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, isPublished: !a.isPublished } : a));
     } catch (error) {
       console.error('Error toggling publish status:', error);
       alert('Failed to update publish status.');
@@ -287,6 +285,7 @@ export const StudentReports: React.FC = () => {
   const handleStartGrading = (attempt: ExamAttempt) => {
     setGradingAttempt(attempt);
     setManualGrades(attempt.manualGrades || {});
+    setView('grading');
   };
 
   const handleSaveManualGrades = async () => {
@@ -301,11 +300,7 @@ export const StudentReports: React.FC = () => {
       let autoScore: number = 0;
       exam.questions.forEach(q => {
         if (q.type === 'mcq' || q.type === 'boolean') {
-          const isCorrect = Array.isArray(q.correctAnswer)
-            ? q.correctAnswer.includes(gradingAttempt.answers[q.id])
-            : gradingAttempt.answers[q.id] === q.correctAnswer;
-          
-          if (isCorrect) {
+          if (gradingAttempt.answers[q.id] === q.correctAnswer) {
             autoScore += q.points;
           }
         }
@@ -317,13 +312,15 @@ export const StudentReports: React.FC = () => {
       await updateDoc(doc(db, 'attempts', gradingAttempt.id), {
         manualGrades,
         score: totalScore,
-        mcqScore: autoScore,
-        subjectiveScore: manualTotal,
         status: 'graded'
       });
 
+      // Update local state
+      setStudentAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? { ...a, manualGrades, score: totalScore, status: 'graded' as const } : a));
+      
       setGradingAttempt(null);
       setManualGrades({});
+      setView('student-details');
     } catch (error) {
       console.error('Error saving grades:', error);
       alert('Failed to save grades.');
@@ -354,6 +351,362 @@ export const StudentReports: React.FC = () => {
     else if (format === 'csv') exportToCSV(data, fileName);
     else exportToPDF(data, title, fileName);
   };
+
+  if (view === 'student-details' && selectedStudent) {
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => setView('list')}>
+              <ChevronRight className="w-5 h-5 rotate-180 mr-2" />
+              Back to List
+            </Button>
+            <div className="h-8 w-[1px] bg-border" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                {selectedStudent.displayName[0]}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">{selectedStudent.displayName}</h2>
+                <p className="text-sm text-muted-foreground">{selectedStudent.email}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleExportAll('excel')}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Export History
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {(() => {
+            const stats = getStudentStats(selectedStudent.uid);
+            return (
+              <>
+                <Card className="bg-primary/5 border-primary/10">
+                  <CardContent className="p-6">
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Marks Obtained</p>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <p className="text-3xl font-bold text-primary">{stats.totalScore}</p>
+                      <p className="text-sm text-muted-foreground">/ {stats.totalFullMarks}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-green-500/5 border-green-500/10">
+                  <CardContent className="p-6">
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Overall Percentage</p>
+                    <p className={`text-3xl font-bold mt-1 ${stats.percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
+                      {stats.percentage.toFixed(2)}%
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-blue-500/5 border-blue-500/10">
+                  <CardContent className="p-6">
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Exams Attempted</p>
+                    <p className="text-3xl font-bold mt-1 text-blue-600">
+                      {stats.attemptsCount}
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            );
+          })()}
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="font-bold text-xl flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            Examination History
+          </h3>
+          {studentAttempts.length === 0 ? (
+            <div className="text-center py-12 border rounded-2xl border-dashed bg-muted/30">
+              <p className="text-muted-foreground">No examination attempts found for this student.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {studentAttempts.map((attempt) => {
+                const exam = exams.find(e => e.id === attempt.examId);
+                const suspiciousCount = attempt.suspiciousActivity?.length || 0;
+                const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+                const attemptPercentage = examFullMarks > 0 ? ((attempt.score || 0) / examFullMarks) * 100 : 0;
+
+                // Calculate MCQ vs Subjective breakdown
+                let mcqMarks = 0;
+                let subjectiveMarks = 0;
+                if (exam) {
+                  exam.questions.forEach(q => {
+                    if (q.type === 'mcq' || q.type === 'boolean') {
+                      if (attempt.answers[q.id] === q.correctAnswer) {
+                        mcqMarks += q.points;
+                      }
+                    } else if (attempt.manualGrades && attempt.manualGrades[q.id] !== undefined) {
+                      subjectiveMarks += attempt.manualGrades[q.id];
+                    }
+                  });
+                }
+
+                return (
+                  <Card key={attempt.id} className={`overflow-hidden border-2 ${suspiciousCount > 0 ? 'border-destructive/20' : 'border-primary/10'}`}>
+                    <div className={`h-1.5 ${suspiciousCount > 0 ? 'bg-destructive' : 'bg-green-500'}`} />
+                    <CardContent className="p-6">
+                        <div className="flex flex-col lg:flex-row justify-between gap-6">
+                          <div className="space-y-4 flex-1">
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-bold text-xl">{exam?.title || 'Unknown Exam'}</h4>
+                              <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'} className="h-6">
+                                {attempt.status === 'graded' ? 'Graded' : 'Pending Grading'}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              <div className="p-3 rounded-lg bg-muted/50 border">
+                                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">MCQ Marks</p>
+                                <p className="text-lg font-bold">{mcqMarks}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-muted/50 border">
+                                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">Subjective Marks</p>
+                                <p className="text-lg font-bold">{subjectiveMarks}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+                                <p className="text-[10px] uppercase font-bold text-primary tracking-wider mb-1">Total Marks</p>
+                                <p className="text-lg font-bold text-primary">{attempt.score || 0} / {examFullMarks}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-4 items-center">
+                              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                <Clock className="w-4 h-4" />
+                                {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
+                              </div>
+                              <Badge variant="outline" className={`${attemptPercentage >= 40 ? 'text-green-600 border-green-200 bg-green-50' : 'text-destructive border-destructive/20 bg-destructive/5'} font-bold`}>
+                                {attemptPercentage.toFixed(1)}%
+                              </Badge>
+                              {suspiciousCount > 0 && (
+                                <Badge variant="destructive" className="animate-pulse">
+                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                  {suspiciousCount} Security Alerts
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row lg:flex-col items-end gap-3 shrink-0">
+                            <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border w-full sm:w-auto">
+                              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'excel')} title="Export Logs to Excel">
+                                <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'csv')} title="Export Logs to CSV">
+                                <FileText className="w-4 h-4 text-blue-600" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'pdf')} title="Export Logs to PDF">
+                                <FilePdf className="w-4 h-4 text-red-600" />
+                              </Button>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                              {(attempt.status === 'submitted' || attempt.status === 'graded') && (
+                                <>
+                                  <Button 
+                                    variant={attempt.status === 'graded' ? 'outline' : 'default'} 
+                                    size="sm" 
+                                    className={attempt.status === 'submitted' ? "bg-yellow-600 hover:bg-yellow-700 flex-1 sm:flex-none" : "flex-1 sm:flex-none"}
+                                    onClick={() => handleStartGrading(attempt)}
+                                  >
+                                    {attempt.status === 'graded' ? 'Regrade Subjective' : 'Grade Subjective'}
+                                  </Button>
+                                  <Button
+                                    variant={attempt.isPublished ? "secondary" : "default"}
+                                    size="sm"
+                                    className={!attempt.isPublished ? "bg-green-600 hover:bg-green-700 flex-1 sm:flex-none" : "flex-1 sm:flex-none"}
+                                    onClick={() => handleTogglePublish(attempt)}
+                                    disabled={isPublishing === attempt.id}
+                                  >
+                                    {attempt.isPublished ? 'Unpublish' : 'Publish'}
+                                  </Button>
+                                </>
+                              )}
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="flex-1 sm:flex-none"
+                                onClick={() => setSelectedAttemptId(selectedAttemptId === attempt.id ? null : attempt.id)}
+                              >
+                                {selectedAttemptId === attempt.id ? 'Hide Logs' : 'View Logs'}
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10 shrink-0" onClick={() => setAttemptToReset(attempt.id)} title="Reset Attempt">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                      {selectedAttemptId === attempt.id && (
+                        <div className="mt-8 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                          <div className="bg-muted/30 rounded-2xl p-6 border-2 border-dashed">
+                            <h5 className="font-bold text-base mb-4 flex items-center gap-2">
+                              <ShieldCheck className="w-5 h-5 text-primary" />
+                              Proctoring & Security Logs
+                            </h5>
+                            {attempt.suspiciousActivity && attempt.suspiciousActivity.length > 0 ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {attempt.suspiciousActivity.map((log, idx) => (
+                                  <div key={idx} className="flex gap-4 p-4 bg-background rounded-xl border-2 border-destructive/10 shadow-sm">
+                                    <div className="mt-1 shrink-0">
+                                      <AlertTriangle className="w-5 h-5 text-destructive" />
+                                    </div>
+                                    <div>
+                                      <p className="font-bold capitalize text-destructive text-sm">{log.type.replace('-', ' ')}</p>
+                                      <p className="text-muted-foreground text-xs mt-1 leading-relaxed">{log.details}</p>
+                                      <p className="text-[10px] text-muted-foreground mt-2 font-mono bg-muted px-2 py-0.5 rounded inline-block">
+                                        {new Date(log.timestamp).toLocaleTimeString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center py-8 text-center">
+                                <CheckCircle2 className="w-12 h-12 text-green-500 mb-2 opacity-50" />
+                                <p className="text-sm text-muted-foreground font-medium">Perfect! No suspicious activity detected during this examination.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'grading' && gradingAttempt) {
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => setView('student-details')}>
+              <ChevronRight className="w-5 h-5 rotate-180 mr-2" />
+              Back to Details
+            </Button>
+            <div className="h-8 w-[1px] bg-border" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-600 font-bold">
+                G
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">Manual Grading Interface</h2>
+                <p className="text-sm text-muted-foreground">
+                  Grading {students.find(s => s.uid === gradingAttempt.studentId)?.displayName}'s subjective responses
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setView('student-details')} disabled={isSavingGrades}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveManualGrades} disabled={isSavingGrades} className="px-8 bg-primary hover:bg-primary/90">
+              {isSavingGrades ? (
+                <>
+                  <Clock className="w-4 h-4 mr-2 animate-spin" />
+                  Saving Marks...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Finalize & Save Marks
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto space-y-8 pb-12">
+          {(() => {
+            const exam = exams.find(e => e.id === gradingAttempt.examId);
+            const subjectiveQuestions = exam?.questions.filter(q => q.type === 'short' || q.type === 'long') || [];
+            
+            if (subjectiveQuestions.length === 0) {
+              return (
+                <Card className="p-12 text-center border-2 border-dashed rounded-2xl">
+                  <p className="text-muted-foreground">No subjective questions to grade for this exam.</p>
+                  <Button variant="outline" className="mt-4" onClick={() => setView('student-details')}>Return to Details</Button>
+                </Card>
+              );
+            }
+
+            return (
+              <div className="space-y-8">
+                {subjectiveQuestions.map((q, idx) => (
+                  <Card key={q.id} className="border-2 border-primary/5 shadow-sm overflow-hidden">
+                    <div className="h-1 bg-primary/20" />
+                    <CardHeader className="pb-4">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-primary uppercase tracking-widest">Question {idx + 1}</p>
+                          <CardTitle className="text-lg leading-relaxed">{q.text}</CardTitle>
+                        </div>
+                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                          {q.points} Max Marks
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="p-6 bg-muted/30 rounded-2xl border-2 border-dashed">
+                        <p className="text-xs font-bold text-muted-foreground uppercase mb-3 tracking-wider">Student's Response:</p>
+                        <p className="text-base leading-relaxed whitespace-pre-wrap">
+                          {gradingAttempt.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-col md:flex-row items-end gap-6 pt-4 border-t">
+                        <div className="flex-1 w-full">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2 block">Award Marks:</label>
+                          <div className="flex items-center gap-3">
+                            <Input 
+                              type="number" 
+                              min="0" 
+                              max={q.points} 
+                              step="0.5"
+                              value={manualGrades[q.id] || 0}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                if (val > q.points) {
+                                  setManualGrades(prev => ({ ...prev, [q.id]: q.points }));
+                                } else if (val < 0) {
+                                  setManualGrades(prev => ({ ...prev, [q.id]: 0 }));
+                                } else {
+                                  setManualGrades(prev => ({ ...prev, [q.id]: val }));
+                                }
+                              }}
+                              className="text-lg font-bold h-12"
+                            />
+                            <span className="text-xl font-bold text-muted-foreground">/ {q.points} Marks</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          <Badge variant={manualGrades[q.id] > 0 ? "default" : "secondary"} className="h-12 px-6 text-sm">
+                            {manualGrades[q.id] || 0} Marks Awarded
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -420,8 +773,6 @@ export const StudentReports: React.FC = () => {
                   </TableHead>
                   <TableHead>Student Name</TableHead>
                   <TableHead>Exams Taken</TableHead>
-                  <TableHead>MCQ Marks</TableHead>
-                  <TableHead>Subj. Marks</TableHead>
                   <TableHead>Total Marks</TableHead>
                   <TableHead>Full Marks</TableHead>
                   <TableHead>Percentage</TableHead>
@@ -460,20 +811,6 @@ export const StudentReports: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>{stats.attemptsCount}</TableCell>
-                        <TableCell onClick={() => handleStudentClick(student)}>
-                          {(() => {
-                            const studentAttempts = attempts.filter(a => a.studentId === student.uid && (a.status === 'submitted' || a.status === 'graded'));
-                            const latestAttempt = studentAttempts.sort((a, b) => (b.endTime || b.startTime) - (a.endTime || a.startTime))[0];
-                            return <Badge variant="outline" className="text-blue-600">{latestAttempt?.mcqScore || 0}</Badge>;
-                          })()}
-                        </TableCell>
-                        <TableCell onClick={() => handleStudentClick(student)}>
-                          {(() => {
-                            const studentAttempts = attempts.filter(a => a.studentId === student.uid && (a.status === 'submitted' || a.status === 'graded'));
-                            const latestAttempt = studentAttempts.sort((a, b) => (b.endTime || b.startTime) - (a.endTime || a.startTime))[0];
-                            return <Badge variant="outline" className="text-purple-600">{latestAttempt?.subjectiveScore || 0}</Badge>;
-                          })()}
-                        </TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>
                           <Badge variant="secondary">{stats.totalScore}</Badge>
                         </TableCell>
@@ -533,319 +870,6 @@ export const StudentReports: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Student Detail Full Screen Dialog */}
-      <Dialog open={!!selectedStudent} onOpenChange={(open) => !open && setSelectedStudent(null)}>
-        <DialogContent className="max-w-[100vw] w-screen h-screen m-0 rounded-none overflow-hidden flex flex-col p-0">
-          <div className="h-16 border-b flex items-center justify-between px-6 bg-card shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                {selectedStudent?.displayName[0]}
-              </div>
-              <div>
-                <DialogTitle className="text-xl">{selectedStudent?.displayName}'s Performance Report</DialogTitle>
-                <p className="text-xs text-muted-foreground">{selectedStudent?.email}</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setSelectedStudent(null)}>
-              <XCircle className="w-6 h-6" />
-            </Button>
-          </div>
-
-          <ScrollArea className="flex-1 p-6">
-            <div className="max-w-6xl mx-auto space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(() => {
-                  const stats = selectedStudent ? getStudentStats(selectedStudent.uid) : { attemptsCount: 0, totalScore: 0, totalFullMarks: 0, percentage: 0 };
-                  return (
-                    <>
-                      <Card className="bg-primary/5 border-primary/10">
-                        <CardContent className="p-6">
-                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Marks Obtained</p>
-                          <div className="flex items-baseline gap-2 mt-1">
-                            <p className="text-3xl font-bold text-primary">{stats.totalScore}</p>
-                            <p className="text-sm text-muted-foreground">/ {stats.totalFullMarks}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card className="bg-green-500/5 border-green-500/10">
-                        <CardContent className="p-6">
-                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Overall Percentage</p>
-                          <p className={`text-3xl font-bold mt-1 ${stats.percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
-                            {stats.percentage.toFixed(2)}%
-                          </p>
-                        </CardContent>
-                      </Card>
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-bold text-xl flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  Examination History
-                </h3>
-                {studentAttempts.length === 0 ? (
-                  <div className="text-center py-12 border rounded-2xl border-dashed bg-muted/30">
-                    <p className="text-muted-foreground">No examination attempts found for this student.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {studentAttempts.map((attempt) => {
-                      const exam = exams.find(e => e.id === attempt.examId);
-                      const suspiciousCount = attempt.suspiciousActivity?.length || 0;
-                      const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
-                      const attemptPercentage = examFullMarks > 0 ? ((attempt.score || 0) / examFullMarks) * 100 : 0;
-
-                      return (
-                        <Card key={attempt.id} className={`overflow-hidden border-2 ${suspiciousCount > 0 ? 'border-destructive/20' : 'border-primary/10'}`}>
-                          <div className={`h-1.5 ${suspiciousCount > 0 ? 'bg-destructive' : 'bg-green-500'}`} />
-                          <CardContent className="p-6">
-                              <div className="flex flex-col md:flex-row justify-between gap-6">
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-3">
-                                    <h4 className="font-bold text-xl">{exam?.title || 'Unknown Exam'}</h4>
-                                    <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'} className="h-6">
-                                      {attempt.status === 'graded' ? 'Graded' : 'Pending Grading'}
-                                    </Badge>
-                                  </div>
-                                  <div className="flex flex-wrap gap-4">
-                                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                      <Clock className="w-4 h-4" />
-                                      {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                      <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-bold">
-                                        Total: {attempt.score !== undefined ? attempt.score : 'N/A'} / {examFullMarks}
-                                      </Badge>
-                                      {attempt.mcqScore !== undefined && (
-                                        <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 font-bold">
-                                          MCQ: {attempt.mcqScore}
-                                        </Badge>
-                                      )}
-                                      {attempt.subjectiveScore !== undefined && (
-                                        <Badge variant="outline" className="text-purple-600 border-purple-200 bg-purple-50 font-bold">
-                                          Subjective: {attempt.subjectiveScore}
-                                        </Badge>
-                                      )}
-                                      <Badge variant="outline" className={`${attemptPercentage >= 40 ? 'text-green-600 border-green-200 bg-green-50' : 'text-destructive border-destructive/20 bg-destructive/5'} font-bold`}>
-                                        {attemptPercentage.toFixed(1)}%
-                                      </Badge>
-                                    </div>
-                                    {suspiciousCount > 0 && (
-                                      <Badge variant="destructive" className="animate-pulse">
-                                        <AlertTriangle className="w-3 h-3 mr-1" />
-                                        {suspiciousCount} Security Alerts
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3 shrink-0">
-                                  <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border">
-                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'excel')} title="Export Logs to Excel">
-                                      <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'csv')} title="Export Logs to CSV">
-                                      <FileText className="w-4 h-4 text-blue-600" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'pdf')} title="Export Logs to PDF">
-                                      <FilePdf className="w-4 h-4 text-red-600" />
-                                    </Button>
-                                  </div>
-                                  {(attempt.status === 'submitted' || attempt.status === 'graded') && (
-                                    <div className="flex items-center gap-2">
-                                      <Button 
-                                        variant={attempt.status === 'graded' ? 'outline' : 'default'} 
-                                        size="sm" 
-                                        className={attempt.status === 'submitted' ? "bg-yellow-600 hover:bg-yellow-700" : ""}
-                                        onClick={() => handleStartGrading(attempt)}
-                                      >
-                                        {attempt.status === 'graded' ? 'Regrade Subjective' : 'Grade Subjective'}
-                                      </Button>
-                                      <Button
-                                        variant={attempt.isPublished ? "secondary" : "default"}
-                                        size="sm"
-                                        className={!attempt.isPublished ? "bg-green-600 hover:bg-green-700" : ""}
-                                        onClick={() => handleTogglePublish(attempt)}
-                                        disabled={isPublishing === attempt.id}
-                                      >
-                                        {attempt.isPublished ? 'Unpublish' : 'Publish'}
-                                      </Button>
-                                    </div>
-                                  )}
-                                  <Button variant="outline" size="sm" onClick={() => setSelectedAttempt(selectedAttempt?.id === attempt.id ? null : attempt)}>
-                                    {selectedAttempt?.id === attempt.id ? 'Hide Logs' : 'View Logs'}
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)} title="Reset Attempt">
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                            {selectedAttempt?.id === attempt.id && (
-                              <div className="mt-8 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                                <div className="bg-muted/30 rounded-2xl p-6 border-2 border-dashed">
-                                  <h5 className="font-bold text-base mb-4 flex items-center gap-2">
-                                    <ShieldCheck className="w-5 h-5 text-primary" />
-                                    Proctoring & Security Logs
-                                  </h5>
-                                  {attempt.suspiciousActivity && attempt.suspiciousActivity.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      {attempt.suspiciousActivity.map((log, idx) => (
-                                        <div key={idx} className="flex gap-4 p-4 bg-background rounded-xl border-2 border-destructive/10 shadow-sm">
-                                          <div className="mt-1 shrink-0">
-                                            <AlertTriangle className="w-5 h-5 text-destructive" />
-                                          </div>
-                                          <div>
-                                            <p className="font-bold capitalize text-destructive text-sm">{log.type.replace('-', ' ')}</p>
-                                            <p className="text-muted-foreground text-xs mt-1 leading-relaxed">{log.details}</p>
-                                            <p className="text-[10px] text-muted-foreground mt-2 font-mono bg-muted px-2 py-0.5 rounded inline-block">
-                                              {new Date(log.timestamp).toLocaleTimeString()}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                                      <CheckCircle2 className="w-12 h-12 text-green-500 mb-2 opacity-50" />
-                                      <p className="text-sm text-muted-foreground font-medium">Perfect! No suspicious activity detected during this examination.</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      {/* Manual Grading Full Screen Dialog */}
-      <Dialog open={!!gradingAttempt} onOpenChange={(open) => !open && setGradingAttempt(null)}>
-        <DialogContent className="max-w-[100vw] w-screen h-screen m-0 rounded-none overflow-hidden flex flex-col p-0">
-          <div className="h-16 border-b flex items-center justify-between px-6 bg-card shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-600 font-bold">
-                G
-              </div>
-              <div>
-                <DialogTitle className="text-xl">Manual Grading Interface</DialogTitle>
-                <DialogDescription>
-                  Grading {students.find(s => s.uid === gradingAttempt?.studentId)?.displayName}'s subjective responses
-                </DialogDescription>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setGradingAttempt(null)}>
-              <XCircle className="w-6 h-6" />
-            </Button>
-          </div>
-          
-          <ScrollArea className="flex-1 p-6">
-            <div className="max-w-4xl mx-auto space-y-8">
-              {(() => {
-                const exam = exams.find(e => e.id === gradingAttempt?.examId);
-                const subjectiveQuestions = exam?.questions.filter(q => q.type === 'short' || q.type === 'long') || [];
-                
-                if (subjectiveQuestions.length === 0) {
-                  return (
-                    <div className="text-center py-12 border-2 border-dashed rounded-2xl">
-                      <p className="text-muted-foreground">No subjective questions to grade for this exam.</p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="space-y-6">
-                    {subjectiveQuestions.map((q, idx) => (
-                      <Card key={q.id} className="border-2 border-primary/5 shadow-sm overflow-hidden">
-                        <div className="h-1 bg-primary/20" />
-                        <CardHeader className="pb-4">
-                          <div className="flex justify-between items-start">
-                            <div className="space-y-1">
-                              <p className="text-xs font-bold text-primary uppercase tracking-widest">Question {idx + 1}</p>
-                              <CardTitle className="text-lg leading-relaxed">{q.text}</CardTitle>
-                            </div>
-                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                              {q.points} Max Marks
-                            </Badge>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                          <div className="p-6 bg-muted/30 rounded-2xl border-2 border-dashed">
-                            <p className="text-xs font-bold text-muted-foreground uppercase mb-3 tracking-wider">Student's Response:</p>
-                            <p className="text-base leading-relaxed whitespace-pre-wrap">
-                              {gradingAttempt?.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
-                            </p>
-                          </div>
-                          
-                          <div className="flex flex-col md:flex-row items-end gap-6 pt-4 border-t">
-                            <div className="flex-1 w-full">
-                              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2 block">Award Marks:</label>
-                              <div className="flex items-center gap-3">
-                                <Input 
-                                  type="number" 
-                                  min="0" 
-                                  max={q.points} 
-                                  step="0.5"
-                                  value={manualGrades[q.id] || 0}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    if (val > q.points) {
-                                      setManualGrades(prev => ({ ...prev, [q.id]: q.points }));
-                                    } else if (val < 0) {
-                                      setManualGrades(prev => ({ ...prev, [q.id]: 0 }));
-                                    } else {
-                                      setManualGrades(prev => ({ ...prev, [q.id]: val }));
-                                    }
-                                  }}
-                                  className="text-lg font-bold h-12"
-                                />
-                                <span className="text-xl font-bold text-muted-foreground">/ {q.points}</span>
-                              </div>
-                            </div>
-                            <div className="shrink-0">
-                              <Badge variant={manualGrades[q.id] > 0 ? "default" : "secondary"} className="h-12 px-6 text-sm">
-                                {manualGrades[q.id] || 0} Marks Awarded
-                              </Badge>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          </ScrollArea>
-
-          <div className="h-20 border-t bg-card flex items-center justify-end px-8 gap-4 shrink-0">
-            <Button variant="outline" onClick={() => setGradingAttempt(null)} disabled={isSavingGrades}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveManualGrades} disabled={isSavingGrades} className="px-8">
-              {isSavingGrades ? (
-                <>
-                  <Clock className="w-4 h-4 mr-2 animate-spin" />
-                  Saving Marks...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Finalize & Save Marks
-                </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
@@ -885,19 +909,3 @@ export const StudentReports: React.FC = () => {
   );
 };
 
-const Shield = ({ className }: { className?: string }) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width="24" 
-    height="24" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-  </svg>
-);

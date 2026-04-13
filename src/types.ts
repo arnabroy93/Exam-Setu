@@ -55,8 +55,6 @@ export interface ExamAttempt {
   endTime?: number;
   status: 'in-progress' | 'submitted' | 'graded';
   score?: number;
-  mcqScore?: number;
-  subjectiveScore?: number;
   isPublished?: boolean;
   feedback?: string;
   suspiciousActivity: ActivityLog[];

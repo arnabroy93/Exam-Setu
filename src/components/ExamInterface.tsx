@@ -133,15 +133,11 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
     try {
       // Auto-grading for MCQ and Boolean
-      let mcqScore = 0;
+      let totalScore = 0;
       shuffledQuestions.forEach(q => {
         if (q.type === 'mcq' || q.type === 'boolean') {
-          const isCorrect = Array.isArray(q.correctAnswer)
-            ? q.correctAnswer.includes(answers[q.id])
-            : answers[q.id] === q.correctAnswer;
-          
-          if (isCorrect) {
-            mcqScore += q.points || 0;
+          if (answers[q.id] === q.correctAnswer) {
+            totalScore += q.points || 0;
           }
         }
       });
@@ -164,7 +160,6 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
-        mcqScore: mcqScore, // Always record MCQ score
         suspiciousActivity: logs.map(log => ({
           timestamp: log.timestamp || Date.now(),
           type: log.type || 'unknown',
@@ -173,8 +168,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       };
 
       if (!hasSubjective) {
-        attemptData.score = mcqScore;
-        attemptData.subjectiveScore = 0;
+        attemptData.score = totalScore;
       }
 
       console.log('Submitting attempt to Firestore:', attemptId);
@@ -550,7 +544,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                 <CardHeader className="pb-4">
                   <div className="flex justify-between items-start">
                     <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {currentQuestionIdx + 1}</span>
-                    <Badge variant="secondary">{currentQuestion.points}</Badge>
+                    <Badge variant="secondary">{currentQuestion.points} Marks</Badge>
                   </div>
                   <CardTitle className="text-2xl mt-4 leading-relaxed">
                     {currentQuestion.text}
@@ -646,7 +640,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                   <CardHeader className="pb-4">
                     <div className="flex justify-between items-start">
                       <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {qIdx + 1}</span>
-                      <Badge variant="secondary">{q.points}</Badge>
+                      <Badge variant="secondary">{q.points} Marks</Badge>
                     </div>
                     <CardTitle className="text-2xl mt-4 leading-relaxed">
                       {q.text}
