@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
@@ -40,7 +40,13 @@ export const StudentReports: React.FC = () => {
   const [exams, setExams] = useState<Exam[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
-  const [studentAttempts, setStudentAttempts] = useState<ExamAttempt[]>([]);
+  const studentAttempts = useMemo(() => {
+    if (!selectedStudent) return [];
+    return attempts
+      .filter(a => a.studentId === selectedStudent.uid)
+      .sort((a, b) => b.startTime - a.startTime);
+  }, [attempts, selectedStudent]);
+  
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isPublishing, setIsPublishing] = useState<string | boolean | null>(null);
@@ -59,8 +65,6 @@ export const StudentReports: React.FC = () => {
     try {
       await deleteDoc(doc(db, 'attempts', attemptToReset));
       setAttemptToReset(null);
-      // Update local state
-      setStudentAttempts(prev => prev.filter(a => a.id !== attemptToReset));
       if (selectedAttemptId === attemptToReset) {
         setSelectedAttemptId(null);
       }
@@ -94,17 +98,33 @@ export const StudentReports: React.FC = () => {
 
   const getStudentStats = (studentId: string) => {
     const studentAttempts = attempts.filter(a => a.studentId === studentId && (a.status === 'submitted' || a.status === 'graded'));
+    
+    // Group attempts by examId to find the best attempt for each exam
+    const attemptsByExam: Record<string, ExamAttempt> = {};
+    studentAttempts.forEach(attempt => {
+      const currentBest = attemptsByExam[attempt.examId];
+      const attemptScore = attempt.score ?? attempt.autoScore ?? 0;
+      const currentBestScore = currentBest ? (currentBest.score ?? currentBest.autoScore ?? 0) : -1;
+      
+      if (!currentBest || attemptScore > currentBestScore) {
+        attemptsByExam[attempt.examId] = attempt;
+      }
+    });
+
     let totalScore = 0;
     let totalFullMarks = 0;
     let lastSubmissionTime = 0;
 
-    studentAttempts.forEach(attempt => {
+    Object.values(attemptsByExam).forEach(attempt => {
       const exam = exams.find(e => e.id === attempt.examId);
       if (exam) {
         const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
         totalFullMarks += examFullMarks;
       }
-      totalScore += attempt.score || 0;
+      totalScore += attempt.score ?? attempt.autoScore ?? 0;
+    });
+
+    studentAttempts.forEach(attempt => {
       const submissionTime = attempt.endTime || attempt.startTime;
       if (submissionTime > lastSubmissionTime) {
         lastSubmissionTime = submissionTime;
@@ -263,7 +283,6 @@ export const StudentReports: React.FC = () => {
 
   const handleStudentClick = (student: UserProfile) => {
     setSelectedStudent(student);
-    setStudentAttempts(attempts.filter(a => a.studentId === student.uid).sort((a, b) => b.startTime - a.startTime));
     setView('student-details');
   };
 
@@ -273,8 +292,6 @@ export const StudentReports: React.FC = () => {
       await updateDoc(doc(db, 'attempts', attempt.id), {
         isPublished: !attempt.isPublished
       });
-      // Update local state for immediate feedback
-      setStudentAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, isPublished: !a.isPublished } : a));
     } catch (error) {
       console.error('Error toggling publish status:', error);
       alert('Failed to update publish status.');
@@ -311,9 +328,6 @@ export const StudentReports: React.FC = () => {
         score: totalScore,
         status: 'graded'
       });
-
-      // Update local state
-      setStudentAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? { ...a, manualGrades, autoScore, score: totalScore, status: 'graded' as const } : a));
       
       setGradingAttempt(null);
       setManualGrades({});
@@ -427,8 +441,7 @@ export const StudentReports: React.FC = () => {
                 const exam = exams.find(e => e.id === attempt.examId);
                 const suspiciousCount = attempt.suspiciousActivity?.length || 0;
                 const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
-                const attemptPercentage = examFullMarks > 0 ? ((attempt.score || 0) / examFullMarks) * 100 : 0;
-
+                
                 // Calculate MCQ vs Subjective breakdown
                 const mcqMarks = attempt.autoScore !== undefined 
                   ? attempt.autoScore 
@@ -438,6 +451,9 @@ export const StudentReports: React.FC = () => {
                 if (attempt.manualGrades) {
                   subjectiveMarks = (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0);
                 }
+
+                const currentTotalScore = attempt.score ?? (mcqMarks + subjectiveMarks);
+                const attemptPercentage = examFullMarks > 0 ? (currentTotalScore / examFullMarks) * 100 : 0;
 
                 return (
                   <Card key={attempt.id} className={`overflow-hidden border-2 ${suspiciousCount > 0 ? 'border-destructive/20' : 'border-primary/10'}`}>
@@ -463,7 +479,7 @@ export const StudentReports: React.FC = () => {
                               </div>
                               <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
                                 <p className="text-[10px] uppercase font-bold text-primary tracking-wider mb-1">Total Marks</p>
-                                <p className="text-lg font-bold text-primary">{attempt.score || 0} / {examFullMarks}</p>
+                                <p className="text-lg font-bold text-primary">{currentTotalScore} / {examFullMarks}</p>
                               </div>
                             </div>
 
