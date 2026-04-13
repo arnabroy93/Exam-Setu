@@ -130,7 +130,14 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isOwner(request.resource.data.studentId) && isValidAttempt(request.resource.data);
       allow update: if isAuthenticated() && 
                       (
-                        (isOwner(resource.data.studentId) && isValidAttempt(request.resource.data) && request.resource.data.status == 'submitted') ||
+                        (isOwner(resource.data.studentId) && 
+                         isValidAttempt(request.resource.data) && 
+                         request.resource.data.studentId == resource.data.studentId &&
+                         request.resource.data.examId == resource.data.examId &&
+                         (
+                           (resource.data.status == 'in-progress' && request.resource.data.status in ['in-progress', 'submitted', 'graded'])
+                         )
+                        ) ||
                         (isAdmin() || isExaminer())
                       );
       allow delete: if isAdmin() || isExaminer();

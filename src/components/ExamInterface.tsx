@@ -88,7 +88,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   // Sync attempt to Firestore for live monitoring
   useEffect(() => {
-    if (!hasStarted || isSubmitted || !profile) return;
+    if (!hasStarted || isSubmitted || isSubmitting || !profile) return;
 
     const syncAttempt = async () => {
       const attempt: ExamAttempt = {
@@ -143,6 +143,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       setIsSubmitting(true);
       await setDoc(doc(db, 'attempts', attemptId), attempt);
       setIsSubmitted(true);
+      setIsSubmitDialogOpen(false);
       
       // Stop media tracks
       if (mediaStream) {
@@ -468,7 +469,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
             <Timer className="w-5 h-5" />
             {formatTime(timeLeft)}
           </div>
-          <Button variant="destructive" size="sm" onClick={submitExam}>
+          <Button variant="destructive" size="sm" onClick={() => setIsSubmitDialogOpen(true)}>
             <Send className="mr-2 w-4 h-4" />
             Finish Exam
           </Button>
