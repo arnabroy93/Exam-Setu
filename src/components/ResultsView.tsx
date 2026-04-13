@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
+import { isAnswerCorrect } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -140,9 +141,8 @@ export const ResultsView: React.FC = () => {
               <div className="space-y-4">
                 {exam?.questions.map((q, idx) => {
                   const studentAnswer = selectedAttempt.answers[q.id];
-                  const isCorrect = q.type === 'mcq' || q.type === 'boolean' || q.type === 'fill' 
-                    ? JSON.stringify(studentAnswer) === JSON.stringify(q.correctAnswer)
-                    : null;
+                  const isCorrect = isAnswerCorrect(q, studentAnswer);
+                  const isSubjective = q.type === 'short' || q.type === 'long';
                   
                   return (
                     <div key={q.id} className="p-4 rounded-xl border bg-card hover:shadow-sm transition-shadow">
@@ -151,9 +151,21 @@ export const ResultsView: React.FC = () => {
                           <p className="text-xs font-bold text-muted-foreground uppercase">Question {idx + 1}</p>
                           <p className="font-medium">{q.text}</p>
                         </div>
-                        <Badge variant="outline" className="shrink-0">
-                          {q.points} Marks
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="outline" className="shrink-0">
+                            {q.points} Marks
+                          </Badge>
+                          {!isSubjective && (
+                            <Badge variant={isCorrect ? "default" : "destructive"} className="text-[10px] h-5">
+                              {isCorrect ? "Correct" : "Incorrect"}
+                            </Badge>
+                          )}
+                          {isSubjective && selectedAttempt.manualGrades?.[q.id] !== undefined && (
+                            <Badge variant="secondary" className="text-[10px] h-5">
+                              Awarded: {selectedAttempt.manualGrades[q.id]}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div className="p-2 rounded bg-muted/50">
@@ -163,7 +175,9 @@ export const ResultsView: React.FC = () => {
                         {(q.type === 'mcq' || q.type === 'boolean') && (
                           <div className="p-2 rounded bg-green-500/5 border border-green-500/10">
                             <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Correct Answer:</p>
-                            <p className="text-green-700 font-medium">{q.correctAnswer}</p>
+                            <p className="text-green-700 font-medium">
+                              {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer}
+                            </p>
                           </div>
                         )}
                       </div>

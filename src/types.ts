@@ -55,6 +55,7 @@ export interface ExamAttempt {
   endTime?: number;
   status: 'in-progress' | 'submitted' | 'graded';
   score?: number;
+  autoScore?: number;
   isPublished?: boolean;
   feedback?: string;
   suspiciousActivity: ActivityLog[];

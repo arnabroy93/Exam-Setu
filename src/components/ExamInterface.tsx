@@ -8,6 +8,7 @@ import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Loc
 import { db } from '../lib/firebase';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
+import { calculateAutoScore } from '../lib/gradingUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,15 +133,8 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     setIsSubmitting(true);
 
     try {
-      // Auto-grading for MCQ and Boolean
-      let totalScore = 0;
-      shuffledQuestions.forEach(q => {
-        if (q.type === 'mcq' || q.type === 'boolean') {
-          if (answers[q.id] === q.correctAnswer) {
-            totalScore += q.points || 0;
-          }
-        }
-      });
+      // Auto-grading for MCQ, Boolean, and Fill
+      const autoScore = calculateAutoScore(shuffledQuestions, answers);
 
       const hasSubjective = shuffledQuestions.some(q => q.type === 'short' || q.type === 'long');
 
@@ -160,6 +154,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
+        autoScore: autoScore,
         suspiciousActivity: logs.map(log => ({
           timestamp: log.timestamp || Date.now(),
           type: log.type || 'unknown',
@@ -168,7 +163,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       };
 
       if (!hasSubjective) {
-        attemptData.score = totalScore;
+        attemptData.score = autoScore;
       }
 
       console.log('Submitting attempt to Firestore:', attemptId);

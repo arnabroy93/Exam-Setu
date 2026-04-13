@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
+import { calculateAutoScore } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -297,26 +298,22 @@ export const StudentReports: React.FC = () => {
       if (!exam) throw new Error('Exam not found');
 
       // Calculate total score
-      let autoScore: number = 0;
-      exam.questions.forEach(q => {
-        if (q.type === 'mcq' || q.type === 'boolean') {
-          if (gradingAttempt.answers[q.id] === q.correctAnswer) {
-            autoScore += q.points;
-          }
-        }
-      });
+      const autoScore = gradingAttempt.autoScore !== undefined 
+        ? gradingAttempt.autoScore 
+        : calculateAutoScore(exam.questions, gradingAttempt.answers);
 
       const manualTotal: number = (Object.values(manualGrades) as any[]).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
       const totalScore: number = autoScore + manualTotal;
 
       await updateDoc(doc(db, 'attempts', gradingAttempt.id), {
         manualGrades,
+        autoScore,
         score: totalScore,
         status: 'graded'
       });
 
       // Update local state
-      setStudentAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? { ...a, manualGrades, score: totalScore, status: 'graded' as const } : a));
+      setStudentAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? { ...a, manualGrades, autoScore, score: totalScore, status: 'graded' as const } : a));
       
       setGradingAttempt(null);
       setManualGrades({});
@@ -433,18 +430,13 @@ export const StudentReports: React.FC = () => {
                 const attemptPercentage = examFullMarks > 0 ? ((attempt.score || 0) / examFullMarks) * 100 : 0;
 
                 // Calculate MCQ vs Subjective breakdown
-                let mcqMarks = 0;
+                const mcqMarks = attempt.autoScore !== undefined 
+                  ? attempt.autoScore 
+                  : (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
+                
                 let subjectiveMarks = 0;
-                if (exam) {
-                  exam.questions.forEach(q => {
-                    if (q.type === 'mcq' || q.type === 'boolean') {
-                      if (attempt.answers[q.id] === q.correctAnswer) {
-                        mcqMarks += q.points;
-                      }
-                    } else if (attempt.manualGrades && attempt.manualGrades[q.id] !== undefined) {
-                      subjectiveMarks += attempt.manualGrades[q.id];
-                    }
-                  });
+                if (attempt.manualGrades) {
+                  subjectiveMarks = (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0);
                 }
 
                 return (
