@@ -141,9 +141,12 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
-        score: hasSubjective ? undefined : score,
         suspiciousActivity: logs,
       };
+
+      if (!hasSubjective) {
+        attempt.score = score;
+      }
 
       console.log('Submitting attempt to Firestore:', attemptId);
       await setDoc(doc(db, 'attempts', attemptId), attempt);
