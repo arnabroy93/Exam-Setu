@@ -92,18 +92,29 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     if (!hasStarted || isSubmitted || isSubmitting || !profile) return;
 
     const syncAttempt = async () => {
-      const attempt: ExamAttempt = {
+      if (!profile) return;
+
+      const sanitizedAnswers: Record<string, any> = {};
+      Object.keys(answers).forEach(key => {
+        if (answers[key] !== undefined && answers[key] !== null) {
+          sanitizedAnswers[key] = answers[key];
+        }
+      });
+
+      const attempt: any = {
         id: attemptId,
         examId: exam.id,
         studentId: profile.uid,
-        answers,
+        answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         status: 'in-progress',
         suspiciousActivity: logs,
       };
 
       try {
-        await setDoc(doc(db, 'attempts', attemptId), attempt);
+        // Remove any undefined values that might crash Firestore
+        const cleanAttempt = JSON.parse(JSON.stringify(attempt));
+        await setDoc(doc(db, 'attempts', attemptId), cleanAttempt);
       } catch (error) {
         console.error('Error syncing attempt:', error);
       }
@@ -122,34 +133,50 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
     try {
       // Auto-grading for MCQ and Boolean
-      let score = 0;
+      let totalScore = 0;
       shuffledQuestions.forEach(q => {
         if (q.type === 'mcq' || q.type === 'boolean') {
           if (answers[q.id] === q.correctAnswer) {
-            score += q.points;
+            totalScore += q.points || 0;
           }
         }
       });
 
       const hasSubjective = shuffledQuestions.some(q => q.type === 'short' || q.type === 'long');
 
-      const attempt: ExamAttempt = {
+      // Sanitize answers: remove any undefined values
+      const sanitizedAnswers: Record<string, any> = {};
+      Object.keys(answers).forEach(key => {
+        if (answers[key] !== undefined && answers[key] !== null) {
+          sanitizedAnswers[key] = answers[key];
+        }
+      });
+
+      const attemptData: any = {
         id: attemptId,
         examId: exam.id,
-        studentId: profile?.uid || '',
-        answers,
+        studentId: profile?.uid || 'anonymous',
+        answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
-        suspiciousActivity: logs,
+        suspiciousActivity: logs.map(log => ({
+          timestamp: log.timestamp || Date.now(),
+          type: log.type || 'unknown',
+          details: log.details || ''
+        })),
       };
 
       if (!hasSubjective) {
-        attempt.score = score;
+        attemptData.score = totalScore;
       }
 
       console.log('Submitting attempt to Firestore:', attemptId);
-      await setDoc(doc(db, 'attempts', attemptId), attempt);
+      
+      // Final safety check: JSON stringify/parse removes all undefined values
+      const finalAttempt = JSON.parse(JSON.stringify(attemptData));
+
+      await setDoc(doc(db, 'attempts', attemptId), finalAttempt);
       console.log('Submission successful');
       
       setIsSubmitted(true);
