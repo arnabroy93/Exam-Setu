@@ -469,9 +469,14 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
             <Timer className="w-5 h-5" />
             {formatTime(timeLeft)}
           </div>
-          <Button variant="destructive" size="sm" onClick={() => setIsSubmitDialogOpen(true)}>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={() => setIsSubmitDialogOpen(true)}
+            disabled={isSubmitting}
+          >
             <Send className="mr-2 w-4 h-4" />
-            Finish Exam
+            {isSubmitting ? 'Submitting...' : 'Finish Exam'}
           </Button>
         </div>
       </header>
@@ -696,7 +701,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
           <AlertDialogFooter>
             <AlertDialogCancel variant="outline" size="default">Review Answers</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={submitExam} 
+              onClick={(e) => {
+                e.preventDefault();
+                submitExam();
+              }} 
               disabled={isSubmitting}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >

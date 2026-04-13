@@ -75,16 +75,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const existingProfile = userDoc.data() as UserProfile;
         
+        // Always update basic info to ensure it's fresh and recorded
+        const updates: Partial<UserProfile> = {
+          displayName: firebaseUser.displayName || existingProfile.displayName,
+          email: firebaseUser.email || existingProfile.email,
+        };
+
         // Auto-upgrade logic for default roles if they exist but have wrong role
         if (defaultAdmins.includes(firebaseUser.email || '') && existingProfile.role !== 'admin') {
-          const updatedProfile = { ...existingProfile, role: 'admin' as const };
-          await updateDoc(userDocRef, { role: 'admin' });
-          setProfile(updatedProfile);
+          updates.role = 'admin';
         } else if (defaultExaminers.includes(firebaseUser.email || '') && existingProfile.role !== 'examiner' && existingProfile.role !== 'admin') {
-          // Upgrade to examiner if in list and not already admin
-          const updatedProfile = { ...existingProfile, role: 'examiner' as const };
-          await updateDoc(userDocRef, { role: 'examiner' });
-          setProfile(updatedProfile);
+          updates.role = 'examiner';
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await updateDoc(userDocRef, updates);
+          setProfile({ ...existingProfile, ...updates } as UserProfile);
         } else {
           setProfile(existingProfile);
         }
