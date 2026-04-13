@@ -544,7 +544,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                 <CardHeader className="pb-4">
                   <div className="flex justify-between items-start">
                     <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {currentQuestionIdx + 1}</span>
-                    <Badge variant="secondary">{currentQuestion.points} Points</Badge>
+                    <Badge variant="secondary">{currentQuestion.points}</Badge>
                   </div>
                   <CardTitle className="text-2xl mt-4 leading-relaxed">
                     {currentQuestion.text}
@@ -640,7 +640,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                   <CardHeader className="pb-4">
                     <div className="flex justify-between items-start">
                       <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {qIdx + 1}</span>
-                      <Badge variant="secondary">{q.points} Points</Badge>
+                      <Badge variant="secondary">{q.points}</Badge>
                     </div>
                     <CardTitle className="text-2xl mt-4 leading-relaxed">
                       {q.text}

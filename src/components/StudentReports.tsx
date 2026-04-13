@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2 } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -41,7 +41,7 @@ export const StudentReports: React.FC = () => {
   const [studentAttempts, setStudentAttempts] = useState<ExamAttempt[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState<ExamAttempt | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [isPublishing, setIsPublishing] = useState(false);
+  const [isPublishing, setIsPublishing] = useState<string | null>(null);
   const [gradingAttempt, setGradingAttempt] = useState<ExamAttempt | null>(null);
   const [manualGrades, setManualGrades] = useState<Record<string, number>>({});
   const [isSavingGrades, setIsSavingGrades] = useState(false);
@@ -94,11 +94,15 @@ export const StudentReports: React.FC = () => {
     let totalRight = 0;
     let totalWrong = 0;
     let totalScore = 0;
+    let totalFullMarks = 0;
     let lastSubmissionTime = 0;
 
     studentAttempts.forEach(attempt => {
       const exam = exams.find(e => e.id === attempt.examId);
       if (exam) {
+        const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
+        totalFullMarks += examFullMarks;
+        
         exam.questions.forEach(q => {
           const answer = attempt.answers[q.id];
           if (answer !== undefined) {
@@ -117,11 +121,15 @@ export const StudentReports: React.FC = () => {
       }
     });
 
+    const percentage = totalFullMarks > 0 ? (totalScore / totalFullMarks) * 100 : 0;
+
     return {
       attemptsCount: studentAttempts.length,
       totalRight,
       totalWrong,
       totalScore,
+      totalFullMarks,
+      percentage,
       lastSubmissionTime,
       allPublished: studentAttempts.length > 0 && studentAttempts.every(a => a.isPublished),
       hasPending: studentAttempts.some(a => a.status === 'submitted')
@@ -270,6 +278,20 @@ export const StudentReports: React.FC = () => {
     setStudentAttempts(attempts.filter(a => a.studentId === student.uid).sort((a, b) => b.startTime - a.startTime));
   };
 
+  const handleTogglePublish = async (attempt: ExamAttempt) => {
+    setIsPublishing(attempt.id);
+    try {
+      await updateDoc(doc(db, 'attempts', attempt.id), {
+        isPublished: !attempt.isPublished
+      });
+    } catch (error) {
+      console.error('Error toggling publish status:', error);
+      alert('Failed to update publish status.');
+    } finally {
+      setIsPublishing(null);
+    }
+  };
+
   const handleStartGrading = (attempt: ExamAttempt) => {
     setGradingAttempt(attempt);
     setManualGrades(attempt.manualGrades || {});
@@ -403,6 +425,8 @@ export const StudentReports: React.FC = () => {
                   <TableHead>Total Right</TableHead>
                   <TableHead>Total Wrong</TableHead>
                   <TableHead>Total Marks</TableHead>
+                  <TableHead>Full Marks</TableHead>
+                  <TableHead>Percentage</TableHead>
                   <TableHead>Last Submission</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
@@ -442,6 +466,14 @@ export const StudentReports: React.FC = () => {
                         <TableCell onClick={() => handleStudentClick(student)} className="text-destructive font-medium">{stats.totalWrong}</TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>
                           <Badge variant="secondary">{stats.totalScore}</Badge>
+                        </TableCell>
+                        <TableCell onClick={() => handleStudentClick(student)}>
+                          <Badge variant="outline">{stats.totalFullMarks}</Badge>
+                        </TableCell>
+                        <TableCell onClick={() => handleStudentClick(student)}>
+                          <span className={`font-bold ${stats.percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
+                            {stats.percentage.toFixed(1)}%
+                          </span>
                         </TableCell>
                         <TableCell onClick={() => handleStudentClick(student)}>
                           <span className="text-xs text-muted-foreground">
@@ -491,151 +523,199 @@ export const StudentReports: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Student Detail Dialog */}
+      {/* Student Detail Full Screen Dialog */}
       <Dialog open={!!selectedStudent} onOpenChange={(open) => !open && setSelectedStudent(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <User className="w-5 h-5" />
-              {selectedStudent?.displayName}'s Detailed Report
-            </DialogTitle>
-            <DialogDescription>
-              View all exam attempts and detailed proctoring logs for this student.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-auto space-y-6 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(() => {
-                const stats = selectedStudent ? getStudentStats(selectedStudent.uid) : { attemptsCount: 0, totalRight: 0, totalWrong: 0, totalScore: 0 };
-                return (
-                  <>
-                    <Card className="bg-primary/5 border-primary/10">
-                      <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Total Marks</p>
-                        <p className="text-2xl font-bold text-primary">{stats.totalScore}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-green-500/5 border-green-500/10">
-                      <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Total Right</p>
-                        <p className="text-2xl font-bold text-green-600">{stats.totalRight}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="bg-destructive/5 border-destructive/10">
-                      <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Total Wrong</p>
-                        <p className="text-2xl font-bold text-destructive">{stats.totalWrong}</p>
-                      </CardContent>
-                    </Card>
-                  </>
-                );
-              })()}
+        <DialogContent className="max-w-[100vw] w-screen h-screen m-0 rounded-none overflow-hidden flex flex-col p-0">
+          <div className="h-16 border-b flex items-center justify-between px-6 bg-card shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                {selectedStudent?.displayName[0]}
+              </div>
+              <div>
+                <DialogTitle className="text-xl">{selectedStudent?.displayName}'s Performance Report</DialogTitle>
+                <p className="text-xs text-muted-foreground">{selectedStudent?.email}</p>
+              </div>
             </div>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedStudent(null)}>
+              <XCircle className="w-6 h-6" />
+            </Button>
+          </div>
 
-            <div className="space-y-4">
-              <h3 className="font-bold text-lg">Exam History</h3>
-              {studentAttempts.length === 0 ? (
-                <div className="text-center py-8 border rounded-xl border-dashed">No exam attempts found.</div>
-              ) : (
-                <div className="space-y-4">
-                  {studentAttempts.map((attempt) => {
-                    const exam = exams.find(e => e.id === attempt.examId);
-                    const suspiciousCount = attempt.suspiciousActivity?.length || 0;
-                    return (
-                      <Card key={attempt.id} className={`overflow-hidden border-l-4 ${suspiciousCount > 0 ? 'border-l-destructive' : 'border-l-green-500'}`}>
-                        <CardContent className="p-4">
-                            <div className="flex flex-col md:flex-row justify-between gap-4">
-                              <div>
-                                <h4 className="font-bold text-lg">{exam?.title || 'Unknown Exam'}</h4>
-                                <div className="flex flex-wrap gap-3 mt-2">
-                                  <span className="text-xs flex items-center gap-1 text-muted-foreground">
-                                    <Clock className="w-3 h-3" />
-                                    Submitted: {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
-                                  </span>
-                                  <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'}>
-                                    Score: {attempt.score !== undefined ? attempt.score : 'Pending'}
-                                  </Badge>
-                                  <Badge variant={attempt.isPublished ? 'outline' : 'secondary'} className={attempt.isPublished ? 'text-green-600 border-green-200 bg-green-50' : 'text-muted-foreground'}>
-                                    {attempt.isPublished ? 'Published' : 'Unpublished'}
-                                  </Badge>
-                                  {suspiciousCount > 0 && (
-                                    <Badge variant="destructive" className="animate-pulse">
-                                      <AlertTriangle className="w-3 h-3 mr-1" />
-                                      {suspiciousCount} Alerts
-                                    </Badge>
-                                  )}
-                                  {attempt.status === 'submitted' && (
-                                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
-                                      Pending Grading
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1 border-r pr-2 mr-2">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleExportProctoringLogs(attempt, 'excel')} title="Export Logs to Excel">
-                                    <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleExportProctoringLogs(attempt, 'csv')} title="Export Logs to CSV">
-                                    <FileText className="w-4 h-4 text-blue-600" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleExportProctoringLogs(attempt, 'pdf')} title="Export Logs to PDF">
-                                    <FilePdf className="w-4 h-4 text-red-600" />
-                                  </Button>
-                                </div>
-                                {attempt.status === 'submitted' && (
-                                  <Button variant="default" size="sm" className="bg-yellow-600 hover:bg-yellow-700" onClick={() => handleStartGrading(attempt)}>
-                                    Grade Subjective
-                                  </Button>
-                                )}
-                                <Button variant="outline" size="sm" onClick={() => setSelectedAttempt(selectedAttempt?.id === attempt.id ? null : attempt)}>
-                                  {selectedAttempt?.id === attempt.id ? 'Hide Logs' : 'View Logs'}
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)} title="Reset Attempt">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                          {selectedAttempt?.id === attempt.id && (
-                            <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                              <div className="bg-muted/50 rounded-lg p-4">
-                                <h5 className="font-bold text-sm mb-3 flex items-center gap-2">
-                                  <Shield className="w-4 h-4 text-primary" />
-                                  Proctoring Logs
-                                </h5>
-                                {attempt.suspiciousActivity && attempt.suspiciousActivity.length > 0 ? (
-                                  <div className="space-y-3">
-                                    {attempt.suspiciousActivity.map((log, idx) => (
-                                      <div key={idx} className="flex gap-3 text-sm border-b border-border/50 pb-2 last:border-0">
-                                        <div className="mt-1">
-                                          <AlertTriangle className="w-4 h-4 text-destructive" />
-                                        </div>
-                                        <div>
-                                          <p className="font-medium capitalize text-destructive">{log.type.replace('-', ' ')}</p>
-                                          <p className="text-muted-foreground text-xs">{log.details}</p>
-                                          <p className="text-[10px] text-muted-foreground mt-1">
-                                            {new Date(log.timestamp).toLocaleTimeString()}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground italic">No suspicious activity detected during this exam.</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
+          <ScrollArea className="flex-1 p-6">
+            <div className="max-w-6xl mx-auto space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {(() => {
+                  const stats = selectedStudent ? getStudentStats(selectedStudent.uid) : { attemptsCount: 0, totalRight: 0, totalWrong: 0, totalScore: 0, totalFullMarks: 0, percentage: 0 };
+                  return (
+                    <>
+                      <Card className="bg-primary/5 border-primary/10">
+                        <CardContent className="p-6">
+                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Marks Obtained</p>
+                          <div className="flex items-baseline gap-2 mt-1">
+                            <p className="text-3xl font-bold text-primary">{stats.totalScore}</p>
+                            <p className="text-sm text-muted-foreground">/ {stats.totalFullMarks}</p>
+                          </div>
                         </CardContent>
                       </Card>
-                    );
-                  })}
-                </div>
-              )}
+                      <Card className="bg-green-500/5 border-green-500/10">
+                        <CardContent className="p-6">
+                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Overall Percentage</p>
+                          <p className={`text-3xl font-bold mt-1 ${stats.percentage >= 40 ? 'text-green-600' : 'text-destructive'}`}>
+                            {stats.percentage.toFixed(2)}%
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-blue-500/5 border-blue-500/10">
+                        <CardContent className="p-6">
+                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Correct</p>
+                          <p className="text-3xl font-bold text-blue-600 mt-1">{stats.totalRight}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-destructive/5 border-destructive/10">
+                        <CardContent className="p-6">
+                          <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Total Incorrect</p>
+                          <p className="text-3xl font-bold text-destructive mt-1">{stats.totalWrong}</p>
+                        </CardContent>
+                      </Card>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-bold text-xl flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Examination History
+                </h3>
+                {studentAttempts.length === 0 ? (
+                  <div className="text-center py-12 border rounded-2xl border-dashed bg-muted/30">
+                    <p className="text-muted-foreground">No examination attempts found for this student.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {studentAttempts.map((attempt) => {
+                      const exam = exams.find(e => e.id === attempt.examId);
+                      const suspiciousCount = attempt.suspiciousActivity?.length || 0;
+                      const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+                      const attemptPercentage = examFullMarks > 0 ? ((attempt.score || 0) / examFullMarks) * 100 : 0;
+
+                      return (
+                        <Card key={attempt.id} className={`overflow-hidden border-2 ${suspiciousCount > 0 ? 'border-destructive/20' : 'border-primary/10'}`}>
+                          <div className={`h-1.5 ${suspiciousCount > 0 ? 'bg-destructive' : 'bg-green-500'}`} />
+                          <CardContent className="p-6">
+                              <div className="flex flex-col md:flex-row justify-between gap-6">
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-3">
+                                    <h4 className="font-bold text-xl">{exam?.title || 'Unknown Exam'}</h4>
+                                    <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'} className="h-6">
+                                      {attempt.status === 'graded' ? 'Graded' : 'Pending Grading'}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex flex-wrap gap-4">
+                                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                      <Clock className="w-4 h-4" />
+                                      {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 font-bold">
+                                        Score: {attempt.score !== undefined ? attempt.score : 'N/A'} / {examFullMarks}
+                                      </Badge>
+                                      <Badge variant="outline" className={`${attemptPercentage >= 40 ? 'text-green-600 border-green-200 bg-green-50' : 'text-destructive border-destructive/20 bg-destructive/5'} font-bold`}>
+                                        {attemptPercentage.toFixed(1)}%
+                                      </Badge>
+                                    </div>
+                                    {suspiciousCount > 0 && (
+                                      <Badge variant="destructive" className="animate-pulse">
+                                        <AlertTriangle className="w-3 h-3 mr-1" />
+                                        {suspiciousCount} Security Alerts
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0">
+                                  <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border">
+                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'excel')} title="Export Logs to Excel">
+                                      <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'csv')} title="Export Logs to CSV">
+                                      <FileText className="w-4 h-4 text-blue-600" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleExportProctoringLogs(attempt, 'pdf')} title="Export Logs to PDF">
+                                      <FilePdf className="w-4 h-4 text-red-600" />
+                                    </Button>
+                                  </div>
+                                  {(attempt.status === 'submitted' || attempt.status === 'graded') && (
+                                    <div className="flex items-center gap-2">
+                                      <Button 
+                                        variant={attempt.status === 'graded' ? 'outline' : 'default'} 
+                                        size="sm" 
+                                        className={attempt.status === 'submitted' ? "bg-yellow-600 hover:bg-yellow-700" : ""}
+                                        onClick={() => handleStartGrading(attempt)}
+                                      >
+                                        {attempt.status === 'graded' ? 'Regrade Subjective' : 'Grade Subjective'}
+                                      </Button>
+                                      <Button
+                                        variant={attempt.isPublished ? "secondary" : "default"}
+                                        size="sm"
+                                        className={!attempt.isPublished ? "bg-green-600 hover:bg-green-700" : ""}
+                                        onClick={() => handleTogglePublish(attempt)}
+                                        disabled={isPublishing === attempt.id}
+                                      >
+                                        {attempt.isPublished ? 'Unpublish' : 'Publish'}
+                                      </Button>
+                                    </div>
+                                  )}
+                                  <Button variant="outline" size="sm" onClick={() => setSelectedAttempt(selectedAttempt?.id === attempt.id ? null : attempt)}>
+                                    {selectedAttempt?.id === attempt.id ? 'Hide Logs' : 'View Logs'}
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)} title="Reset Attempt">
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                            {selectedAttempt?.id === attempt.id && (
+                              <div className="mt-8 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                                <div className="bg-muted/30 rounded-2xl p-6 border-2 border-dashed">
+                                  <h5 className="font-bold text-base mb-4 flex items-center gap-2">
+                                    <ShieldCheck className="w-5 h-5 text-primary" />
+                                    Proctoring & Security Logs
+                                  </h5>
+                                  {attempt.suspiciousActivity && attempt.suspiciousActivity.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {attempt.suspiciousActivity.map((log, idx) => (
+                                        <div key={idx} className="flex gap-4 p-4 bg-background rounded-xl border-2 border-destructive/10 shadow-sm">
+                                          <div className="mt-1 shrink-0">
+                                            <AlertTriangle className="w-5 h-5 text-destructive" />
+                                          </div>
+                                          <div>
+                                            <p className="font-bold capitalize text-destructive text-sm">{log.type.replace('-', ' ')}</p>
+                                            <p className="text-muted-foreground text-xs mt-1 leading-relaxed">{log.details}</p>
+                                            <p className="text-[10px] text-muted-foreground mt-2 font-mono bg-muted px-2 py-0.5 rounded inline-block">
+                                              {new Date(log.timestamp).toLocaleTimeString()}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                                      <CheckCircle2 className="w-12 h-12 text-green-500 mb-2 opacity-50" />
+                                      <p className="text-sm text-muted-foreground font-medium">Perfect! No suspicious activity detected during this examination.</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
@@ -660,7 +740,7 @@ export const StudentReports: React.FC = () => {
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <CardTitle className="text-sm font-bold">Question {idx + 1}</CardTitle>
-                        <Badge variant="outline">{q.points} Points Max</Badge>
+                        <Badge variant="outline">{q.points} Max</Badge>
                       </div>
                       <p className="text-sm mt-1">{q.text}</p>
                     </CardHeader>
@@ -676,8 +756,18 @@ export const StudentReports: React.FC = () => {
                             type="number" 
                             min="0" 
                             max={q.points} 
+                            step="0.5"
                             value={manualGrades[q.id] || 0}
-                            onChange={(e) => setManualGrades(prev => ({ ...prev, [q.id]: Number(e.target.value) }))}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              if (val > q.points) {
+                                setManualGrades(prev => ({ ...prev, [q.id]: q.points }));
+                              } else if (val < 0) {
+                                setManualGrades(prev => ({ ...prev, [q.id]: 0 }));
+                              } else {
+                                setManualGrades(prev => ({ ...prev, [q.id]: val }));
+                              }
+                            }}
                             className="mt-1"
                           />
                         </div>

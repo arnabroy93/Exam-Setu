@@ -334,7 +334,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                   <Input value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} placeholder="Enter question text..." />
                 </div>
                 <div className="w-24 space-y-2">
-                  <Label>Points</Label>
+                  <Label>Marks</Label>
                   <Input 
                     type="number" 
                     min="1" 

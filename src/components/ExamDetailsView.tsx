@@ -146,7 +146,7 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ exam, onBack }
                   <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
                     {q.type}
                   </Badge>
-                  <span className="text-xs font-bold text-primary">{q.points} Points</span>
+                  <span className="text-xs font-bold text-primary">{q.points}</span>
                 </div>
                 <CardTitle className="text-lg mt-2">{idx + 1}. {q.text}</CardTitle>
               </CardHeader>
