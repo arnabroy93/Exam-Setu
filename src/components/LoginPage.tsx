@@ -22,6 +22,8 @@ export const LoginPage: React.FC = () => {
         setError('Popup blocked! Please enable popups for this site to sign in.');
       } else if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in cancelled. Please try again.');
+      } else if (err.code === 'auth/not-authorized') {
+        setError('Not authorised. Only anudip.org domain or specific authorized emails are allowed.');
       } else {
         setError('An unexpected error occurred. Please try again.');
       }

@@ -43,6 +43,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
+      const email = firebaseUser.email || '';
+
+      const isAuthorized = email.endsWith('@anudip.org') || 
+                           email === 'arnabredmi3sprime@gmail.com' || 
+                           email === 'arnabsukanya@gmail.com';
+
+      if (!isAuthorized) {
+        await firebaseSignOut(auth);
+        const error: any = new Error('Not authorised');
+        error.code = 'auth/not-authorized';
+        throw error;
+      }
       
       const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDoc = await getDoc(userDocRef);
