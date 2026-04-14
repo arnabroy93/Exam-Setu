@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, GraduationCap } from 'lucide-react';
+import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers } from 'lucide-react';
 import { ExamCreator } from './ExamCreator';
 import { ExamInterface } from './ExamInterface';
 import { ResultsView } from './ResultsView';
@@ -54,8 +54,8 @@ export const Dashboard: React.FC = () => {
       <aside className="w-64 border-r border-border bg-card hidden md:flex flex-col">
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <GraduationCap className="w-6 h-6" />
-            Exam Setu
+            <Layers className="w-6 h-6" />
+            AcadEx
           </h1>
         </div>
         <nav className="flex-1 p-4 space-y-2">

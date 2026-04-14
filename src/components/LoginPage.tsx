@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserRole } from '../types';
-import { GraduationCap, ShieldCheck, UserCog, LogIn } from 'lucide-react';
+import { GraduationCap, ShieldCheck, UserCog, LogIn, Layers } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const LoginPage: React.FC = () => {
@@ -41,17 +41,17 @@ export const LoginPage: React.FC = () => {
         <Card className="border-2 border-primary/10 shadow-xl">
           <CardHeader className="text-center space-y-2">
             <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-2">
-              <GraduationCap className="w-10 h-10 text-primary" />
+              <Layers className="w-10 h-10 text-primary" />
             </div>
             <CardTitle className="text-3xl font-bold tracking-tight text-primary flex items-center justify-center gap-2">
-              <GraduationCap className="w-8 h-8" />
-              Exam Setu
+              <Layers className="w-8 h-8" />
+              AcadEx
             </CardTitle>
             <CardDescription className="text-muted-foreground">
               Your gateway to seamless online examinations
             </CardDescription>
             <p className="text-sm text-muted-foreground mt-4 px-4 text-justify">
-              Exam Setu is a dedicated assessment platform designed to evaluate and enhance knowledge through structured examinations. It serves as an internal platform of Anudip Foundation, aimed at ensuring effective learning outcomes and continuous skill development.
+              AcadEx is a dedicated assessment platform designed to evaluate and enhance knowledge through structured examinations. It serves as an internal platform of Anudip Foundation, aimed at ensuring effective learning outcomes and continuous skill development.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
