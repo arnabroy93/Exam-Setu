@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Exam, ExamAttempt, ActivityLog } from '../types';
-import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid } from 'lucide-react';
+import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
@@ -42,6 +42,8 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [checkingAttempt, setCheckingAttempt] = useState(exam.settings?.restrictAttempts);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [showToast, setShowToast] = useState(false);
+  const [lastLog, setLastLog] = useState<ActivityLog | null>(null);
 
   useEffect(() => {
     if (!exam.settings?.restrictAttempts || !profile) {
@@ -85,6 +87,8 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const addLog = useCallback((type: ActivityLog['type'], details: string) => {
     const newLog: ActivityLog = { timestamp: Date.now(), type, details };
     setLogs(prev => [...prev, newLog]);
+    setLastLog(newLog);
+    setShowToast(true);
     console.warn(`Suspicious activity: ${type} - ${details}`);
   }, []);
 
@@ -289,12 +293,18 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     setEndTime(end);
     
     if (exam.settings?.enableAntiCheating) {
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen();
-        setIsFullScreen(true);
-        setHasStarted(true);
+      const elem = document.documentElement as any;
+      const requestFS = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+      if (requestFS) {
+        try {
+          await requestFS.call(elem);
+        } catch (err) {
+          console.error("Error attempting to enable full-screen mode:", err);
+          // Continue even if full-screen fails (e.g., blocked by iframe)
+        }
       }
+      setIsFullScreen(true);
+      setHasStarted(true);
     } else {
       setIsFullScreen(true);
       setHasStarted(true);
@@ -825,14 +835,21 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Warning Toast (Simplified) */}
-      {logs.length > 0 && (
-        <div className="fixed bottom-8 right-8 max-w-xs bg-destructive text-destructive-foreground p-4 rounded-xl shadow-2xl flex items-start gap-3 animate-bounce">
+      {/* Warning Toast */}
+      {showToast && lastLog && (
+        <div className="fixed bottom-8 right-8 max-w-xs bg-destructive text-destructive-foreground p-4 rounded-xl shadow-2xl flex items-start gap-3 animate-in slide-in-from-bottom-5 group z-50">
           <AlertTriangle className="w-6 h-6 shrink-0" />
-          <div>
-            <p className="font-bold">Warning!</p>
-            <p className="text-xs opacity-90">Suspicious activity detected. Your logs are being recorded.</p>
+          <div className="flex-1">
+            <p className="font-bold">Integrity Warning!</p>
+            <p className="text-xs opacity-90">{lastLog.details}</p>
           </div>
+          <button 
+            onClick={() => setShowToast(false)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive-foreground/10 rounded"
+            title="Close warning"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
