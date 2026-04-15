@@ -25,6 +25,17 @@ export const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
   const [view, setView] = useState<'dashboard' | 'create-exam' | 'taking-exam' | 'results' | 'manage-exams' | 'exam-details' | 'settings' | 'user-management' | 'student-reports' | 'live-monitoring'>('dashboard');
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
+  const [quotaError, setQuotaError] = useState(false);
+
+  useEffect(() => {
+    const handleError = (e: ErrorEvent) => {
+      if (e.message?.includes('Quota exceeded') || e.error?.message?.includes('Quota exceeded')) {
+        setQuotaError(true);
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   if (view === 'create-exam') {
     return <ExamCreator onBack={() => setView('manage-exams')} initialExam={selectedExam || undefined} />;
@@ -85,6 +96,12 @@ export const Dashboard: React.FC = () => {
         <header className="h-16 border-b border-border bg-card flex items-center justify-between px-8">
           <h2 className="text-xl font-semibold">Welcome, {profile?.displayName}</h2>
           <div className="flex items-center gap-4">
+            {quotaError && (
+              <Badge variant="destructive" className="animate-pulse gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Daily Quota Limit Reached
+              </Badge>
+            )}
             {(profile?.role === 'admin' || profile?.role === 'examiner') && (
               <Button onClick={() => { setSelectedExam(null); setView('create-exam'); }} size="sm">
                 <Plus className="mr-2 w-4 h-4" />

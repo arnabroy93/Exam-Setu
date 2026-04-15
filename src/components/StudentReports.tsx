@@ -65,7 +65,7 @@ export const StudentReports: React.FC = () => {
   const fetchData = useCallback(async (loadAttempts = false) => {
     setIsRefreshing(true);
     try {
-      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(100)));
       setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
 
       if (loadAttempts) {
