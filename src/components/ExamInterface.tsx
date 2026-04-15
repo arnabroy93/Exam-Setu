@@ -845,7 +845,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
           </div>
           <button 
             onClick={() => setShowToast(false)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive-foreground/10 rounded"
+            className="p-1 hover:bg-destructive-foreground/10 rounded transition-colors"
             title="Close warning"
           >
             <X className="w-4 h-4" />

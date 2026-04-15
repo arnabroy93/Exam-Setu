@@ -24,6 +24,8 @@ export const LoginPage: React.FC = () => {
         setError('Sign-in cancelled. Please try again.');
       } else if (err.code === 'auth/not-authorized') {
         setError('Not authorised. Only anudip.org domain or specific authorized emails are allowed.');
+      } else if (err.message?.toLowerCase().includes('quota')) {
+        setError('Database quota exceeded. This usually resets every 24 hours. Please try again later.');
       } else {
         setError('An unexpected error occurred. Please try again.');
       }

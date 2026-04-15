@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, limit, orderBy, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, orderBy, getDoc, doc } from 'firebase/firestore';
 import { Exam, ExamAttempt } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,53 +16,56 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile) return;
+    const fetchData = async () => {
+      if (!profile) return;
+      try {
+        // Fetch available exams
+        const examsQuery = query(
+          collection(db, 'exams'), 
+          where('status', '==', 'published')
+        );
+        const examsSnapshot = await getDocs(examsQuery);
+        const examsData = examsSnapshot.docs.map(doc => doc.data() as Exam);
+        setAvailableExams(examsData);
 
-    // Fetch available exams
-    const examsQuery = query(
-      collection(db, 'exams'), 
-      where('status', '==', 'published'),
-      limit(5)
-    );
-    
-    const unsubscribeExams = onSnapshot(examsQuery, (snapshot) => {
-      const examsData = snapshot.docs.map(doc => doc.data() as Exam);
-      setAvailableExams(examsData);
-    });
+        // Fetch recent attempts
+        const attemptsQuery = query(
+          collection(db, 'attempts'),
+          where('studentId', '==', profile.uid),
+          orderBy('startTime', 'desc'),
+          limit(3)
+        );
+        const attemptsSnapshot = await getDocs(attemptsQuery);
+        const attemptsData = attemptsSnapshot.docs.map(doc => doc.data() as ExamAttempt);
+        
+        // Fetch unique exam IDs
+        const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
+        const examMap: Record<string, string> = {};
 
-    // Fetch recent attempts
-    const attemptsQuery = query(
-      collection(db, 'attempts'),
-      where('studentId', '==', profile.uid),
-      orderBy('startTime', 'desc'),
-      limit(3)
-    );
+        await Promise.all(examIds.map(async (id) => {
+          try {
+            const examDoc = await getDoc(doc(db, 'exams', id));
+            examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
+          } catch (error) {
+            console.error('Error fetching exam title:', error);
+            examMap[id] = 'Unknown Exam';
+          }
+        }));
 
-    const unsubscribeAttempts = onSnapshot(attemptsQuery, async (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
-      
-      // Fetch exam titles for each attempt
-      const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
-        try {
-          const examDoc = await getDoc(doc(db, 'exams', attempt.examId));
-          return {
-            ...attempt,
-            examTitle: examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam'
-          };
-        } catch (error) {
-          console.error('Error fetching exam title:', error);
-          return { ...attempt, examTitle: 'Unknown Exam' };
-        }
-      }));
+        const enrichedAttempts = attemptsData.map(attempt => ({
+          ...attempt,
+          examTitle: examMap[attempt.examId]
+        }));
 
-      setRecentAttempts(enrichedAttempts);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubscribeExams();
-      unsubscribeAttempts();
+        setRecentAttempts(enrichedAttempts);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
     };
+
+    fetchData();
   }, [profile]);
 
   const stats = [

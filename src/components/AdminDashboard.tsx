@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, getCountFromServer, doc, deleteDoc, orderBy, limit, getDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2 } from 'lucide-react';
+import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -19,7 +19,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { doc, deleteDoc } from 'firebase/firestore';
 
 export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ onAction }) => {
   const [stats, setStats] = useState({
@@ -38,6 +37,109 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const [searchTerm, setSearchTerm] = useState('');
   const [attemptToReset, setAttemptToReset] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchStats = async () => {
+    setIsRefreshing(true);
+    try {
+      const examsCol = collection(db, 'exams');
+      const attemptsCol = collection(db, 'attempts');
+      const studentsCol = collection(db, 'users');
+
+      const [
+        totalExamsCount,
+        activeExamsCount,
+        submittedAttemptsCount,
+        totalStudentsCount
+      ] = await Promise.all([
+        getCountFromServer(examsCol),
+        getCountFromServer(query(examsCol, where('status', '==', 'published'))),
+        getCountFromServer(query(attemptsCol, where('status', 'in', ['submitted', 'graded']))),
+        getCountFromServer(query(studentsCol, where('role', '==', 'student')))
+      ]);
+
+      setStats({
+        totalExams: totalExamsCount.data().count,
+        activeExams: activeExamsCount.data().count,
+        inactiveExams: totalExamsCount.data().count - activeExamsCount.data().count,
+        submittedAttempts: submittedAttemptsCount.data().count,
+        totalStudents: totalStudentsCount.data().count
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    } finally {
+      setIsRefreshing(false);
+      setLoading(false);
+    }
+  };
+
+  const fetchDetailData = async (statId: string) => {
+    setLoading(true);
+    try {
+      switch (statId) {
+        case 'active-exams':
+        case 'inactive-exams':
+        case 'total-exams':
+          const examsSnap = await getDocs(collection(db, 'exams'));
+          setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+          break;
+        case 'total-attempts':
+          const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded'])));
+          setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
+          // Also need students and exams for names
+          const [studentsSnap, examsSnap2] = await Promise.all([
+            getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
+            getDocs(collection(db, 'exams'))
+          ]);
+          setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
+          setExams(examsSnap2.docs.map(doc => doc.data() as Exam));
+          break;
+        case 'total-students':
+          const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+          setStudents(studentsSnap2.docs.map(doc => doc.data() as UserProfile));
+          // Need attempts to show count
+          const attemptsSnap2 = await getDocs(collection(db, 'attempts'));
+          setAttempts(attemptsSnap2.docs.map(doc => doc.data() as ExamAttempt));
+          break;
+      }
+    } catch (error) {
+      console.error('Error fetching detail data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+
+    // Only listen to recent activity (very efficient)
+    const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
+    const unsubscribe = onSnapshot(recentQuery, async (snapshot) => {
+      const recentData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
+      
+      // Fetch names for these 5 attempts only
+      const enriched = await Promise.all(recentData.map(async (attempt) => {
+        const [studentDoc, examDoc] = await Promise.all([
+          getDoc(doc(db, 'users', attempt.studentId)),
+          getDoc(doc(db, 'exams', attempt.examId))
+        ]);
+        return {
+          ...attempt,
+          studentName: studentDoc.exists() ? (studentDoc.data() as UserProfile).displayName : 'Unknown Student',
+          examTitle: examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam'
+        };
+      }));
+      setRecentAttempts(enriched);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (selectedStat) {
+      fetchDetailData(selectedStat);
+    }
+  }, [selectedStat]);
 
   const handleResetAttempt = async () => {
     if (!attemptToReset) return;
@@ -45,6 +147,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     try {
       await deleteDoc(doc(db, 'attempts', attemptToReset));
       setAttemptToReset(null);
+      fetchStats(); // Refresh stats after delete
     } catch (error) {
       console.error('Error resetting attempt:', error);
       alert('Failed to reset attempt.');
@@ -52,76 +155,6 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       setIsResetting(false);
     }
   };
-
-  useEffect(() => {
-    // Listen to exams
-    const examsUnsubscribe = onSnapshot(collection(db, 'exams'), (snapshot) => {
-      const examsData = snapshot.docs.map(doc => doc.data() as Exam);
-      setExams(examsData);
-      const active = examsData.filter(e => e.status === 'published').length;
-      const inactive = examsData.filter(e => e.status !== 'published').length;
-      setStats(prev => ({ 
-        ...prev, 
-        totalExams: examsData.length, 
-        activeExams: active,
-        inactiveExams: inactive
-      }));
-    });
-
-    // Listen to attempts
-    const attemptsUnsubscribe = onSnapshot(collection(db, 'attempts'), (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
-      setAttempts(attemptsData);
-      
-      const submitted = attemptsData.filter(a => a.status === 'submitted' || a.status === 'graded').length;
-      
-      setStats(prev => ({ 
-        ...prev, 
-        submittedAttempts: submitted
-      }));
-    });
-
-    // Listen to students
-    const studentsUnsubscribe = onSnapshot(query(collection(db, 'users'), where('role', '==', 'student')), (snapshot) => {
-      const studentsData = snapshot.docs.map(doc => doc.data() as UserProfile);
-      setStudents(studentsData);
-      setStats(prev => ({ ...prev, totalStudents: studentsData.length }));
-    });
-
-    return () => {
-      examsUnsubscribe();
-      attemptsUnsubscribe();
-      studentsUnsubscribe();
-    };
-  }, []);
-
-  // Enrich recent attempts separately to avoid heavy logic in onSnapshot
-  useEffect(() => {
-    const enrichAttempts = async () => {
-      if (attempts.length === 0) {
-        setRecentAttempts([]);
-        setLoading(false);
-        return;
-      }
-
-      const recent = [...attempts].sort((a, b) => b.startTime - a.startTime).slice(0, 5);
-      const enrichedRecent = await Promise.all(recent.map(async (attempt) => {
-        const student = students.find(s => s.uid === attempt.studentId);
-        const exam = exams.find(e => e.id === attempt.examId);
-        
-        return {
-          ...attempt,
-          studentName: student?.displayName || 'Unknown Student',
-          examTitle: exam?.title || 'Unknown Exam'
-        };
-      }));
-      
-      setRecentAttempts(enrichedRecent);
-      setLoading(false);
-    };
-
-    enrichAttempts();
-  }, [attempts, students, exams]);
 
   const statCards = [
     { id: 'active-exams', title: 'Active Exams', value: stats.activeExams, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'Currently published' },
@@ -245,6 +278,23 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
+          <p className="text-muted-foreground">Overview of system performance and activity.</p>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={fetchStats} 
+          disabled={isRefreshing}
+          className="gap-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh Stats
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat, i) => (
           <Card key={i} className="cursor-pointer hover:shadow-md transition-all border-transparent hover:border-primary/20" onClick={() => setSelectedStat(stat.id)}>

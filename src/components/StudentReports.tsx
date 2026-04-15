@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -39,6 +39,8 @@ export const StudentReports: React.FC = () => {
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
   const studentAttempts = useMemo(() => {
     if (!selectedStudent) return [];
@@ -59,6 +61,30 @@ export const StudentReports: React.FC = () => {
   const [attemptToReset, setAttemptToReset] = useState<string | null>(null);
   const [isResettingAttempt, setIsResettingAttempt] = useState(false);
 
+  const fetchData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const [studentsSnap, attemptsSnap, examsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
+        getDocs(collection(db, 'attempts')),
+        getDocs(collection(db, 'exams'))
+      ]);
+
+      setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
+      setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
+      setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+    } catch (error) {
+      console.error('Error fetching reports data:', error);
+    } finally {
+      setIsRefreshing(false);
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   const handleResetAttempt = async () => {
     if (!attemptToReset) return;
     setIsResettingAttempt(true);
@@ -68,6 +94,7 @@ export const StudentReports: React.FC = () => {
       if (selectedAttemptId === attemptToReset) {
         setSelectedAttemptId(null);
       }
+      fetchData(); // Refresh data after reset
     } catch (error) {
       console.error('Error resetting attempt:', error);
       alert('Failed to reset attempt.');
@@ -75,26 +102,6 @@ export const StudentReports: React.FC = () => {
       setIsResettingAttempt(false);
     }
   };
-
-  useEffect(() => {
-    const studentsUnsubscribe = onSnapshot(query(collection(db, 'users'), where('role', '==', 'student')), (snapshot) => {
-      setStudents(snapshot.docs.map(doc => doc.data() as UserProfile));
-    });
-
-    const attemptsUnsubscribe = onSnapshot(collection(db, 'attempts'), (snapshot) => {
-      setAttempts(snapshot.docs.map(doc => doc.data() as ExamAttempt));
-    });
-
-    const examsUnsubscribe = onSnapshot(collection(db, 'exams'), (snapshot) => {
-      setExams(snapshot.docs.map(doc => doc.data() as Exam));
-    });
-
-    return () => {
-      studentsUnsubscribe();
-      attemptsUnsubscribe();
-      examsUnsubscribe();
-    };
-  }, []);
 
   const getStudentStats = (studentId: string) => {
     const studentAttempts = attempts.filter(a => a.studentId === studentId && (a.status === 'submitted' || a.status === 'graded'));
@@ -725,6 +732,16 @@ export const StudentReports: React.FC = () => {
           <p className="text-muted-foreground">Monitor student performance and anti-cheating logs.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchData} 
+            disabled={isRefreshing}
+            className="gap-2 mr-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           {selectedStudentIds.length > 0 && (
             <div className="flex items-center gap-2 mr-4 border-r pr-4">
               <span className="text-xs font-medium text-muted-foreground">{selectedStudentIds.length} selected</span>

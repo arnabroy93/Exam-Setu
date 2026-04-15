@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Users, Shield, UserCog, GraduationCap, Search } from 'lucide-react';
+import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '../lib/AuthContext';
 
 export const UserManagement: React.FC = () => {
@@ -14,21 +15,33 @@ export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchUsers = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
       const usersData = snapshot.docs.map(doc => doc.data() as UserProfile);
       setUsers(usersData);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setIsRefreshing(false);
       setLoading(false);
-    });
-    return unsubscribe;
+    }
   }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     try {
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, { role: newRole });
+      // Update local state
+      setUsers(prev => prev.map(u => u.uid === userId ? { ...u, role: newRole } : u));
     } catch (error) {
       console.error('Error updating user role:', error);
       alert('Failed to update user role. You might not have permission.');
@@ -59,14 +72,26 @@ export const UserManagement: React.FC = () => {
           <Users className="w-6 h-6 text-primary" />
           User Management
         </h2>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search users..." 
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchUsers} 
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh Users
+          </Button>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search users..." 
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 

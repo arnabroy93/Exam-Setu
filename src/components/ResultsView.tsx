@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
@@ -17,27 +17,41 @@ export const ResultsView: React.FC = () => {
   const [selectedAttempt, setSelectedAttempt] = useState<(ExamAttempt & { exam?: Exam }) | null>(null);
 
   useEffect(() => {
-    if (!profile) return;
-    const q = query(collection(db, 'attempts'), where('studentId', '==', profile.uid));
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
-      
-      // Fetch exam details for each attempt
-      const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
-        try {
-          const examDoc = await getDoc(doc(db, 'exams', attempt.examId));
-          if (examDoc.exists()) {
-            return { ...attempt, exam: examDoc.data() as Exam };
+    const fetchAttempts = async () => {
+      if (!profile) return;
+      try {
+        const q = query(collection(db, 'attempts'), where('studentId', '==', profile.uid));
+        const snapshot = await getDocs(q);
+        const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
+        
+        // Fetch all unique exam IDs needed
+        const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
+        
+        // Fetch exam details for each attempt efficiently
+        const examMap: Record<string, Exam> = {};
+        await Promise.all(examIds.map(async (id) => {
+          try {
+            const examDoc = await getDoc(doc(db, 'exams', id));
+            if (examDoc.exists()) {
+              examMap[id] = examDoc.data() as Exam;
+            }
+          } catch (error) {
+            console.error('Error fetching exam:', id, error);
           }
-        } catch (error) {
-          console.error('Error fetching exam for attempt:', attempt.id, error);
-        }
-        return attempt;
-      }));
-      
-      setAttempts(enrichedAttempts.sort((a, b) => b.startTime - a.startTime));
-    });
-    return unsubscribe;
+        }));
+
+        const enrichedAttempts = attemptsData.map(attempt => ({
+          ...attempt,
+          exam: examMap[attempt.examId]
+        }));
+        
+        setAttempts(enrichedAttempts.sort((a, b) => b.startTime - a.startTime));
+      } catch (error) {
+        console.error('Error fetching results:', error);
+      }
+    };
+
+    fetchAttempts();
   }, [profile]);
 
   if (selectedAttempt) {

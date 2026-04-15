@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export const LiveMonitoring: React.FC = () => {
@@ -13,82 +14,74 @@ export const LiveMonitoring: React.FC = () => {
   const [recentLogs, setRecentLogs] = useState<{ log: ActivityLog, studentName: string, examTitle: string, attemptId: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Listen to in-progress attempts
-    const q = query(collection(db, 'attempts'), where('status', '==', 'in-progress'));
-    
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
-      
-      // Fetch related data (students and exams)
-      // In a real app, we'd use a more efficient way to fetch these
-      const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
-        // We can't easily use onSnapshot for individual docs here without creating many listeners
-        // For live monitoring, we'll try to find them in our local cache or just fetch once
-        // For simplicity in this demo, we'll assume we can find them or they are small
-        return attempt;
-      }));
-
-      // We need to fetch students and exams to show names
-      // Let's listen to all students and exams as well for easy lookup
-      // (This is okay for small/medium apps)
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // Better approach: Listen to everything needed for monitoring
   const [allStudents, setAllStudents] = useState<Record<string, UserProfile>>({});
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    const studentsUnsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+  const fetchStaticData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const [studentsSnap, examsSnap] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'exams'))
+      ]);
+      
       const studentsMap: Record<string, UserProfile> = {};
-      snapshot.docs.forEach(doc => {
+      studentsSnap.docs.forEach(doc => {
         studentsMap[doc.id] = doc.data() as UserProfile;
       });
       setAllStudents(studentsMap);
-    });
 
-    const examsUnsub = onSnapshot(collection(db, 'exams'), (snapshot) => {
       const examsMap: Record<string, Exam> = {};
-      snapshot.docs.forEach(doc => {
+      examsSnap.docs.forEach(doc => {
         examsMap[doc.id] = doc.data() as Exam;
       });
       setAllExams(examsMap);
-    });
+    } catch (error) {
+      console.error('Error fetching static data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStaticData();
 
     const attemptsUnsub = onSnapshot(query(collection(db, 'attempts'), where('status', '==', 'in-progress')), (snapshot) => {
       const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
       setActiveAttempts(attemptsData);
       setLoading(false);
-
-      // Extract recent logs from all active attempts
-      const logs: { log: ActivityLog, studentName: string, examTitle: string, attemptId: string }[] = [];
-      attemptsData.forEach(attempt => {
-        const student = allStudents[attempt.studentId];
-        const exam = allExams[attempt.examId];
-        if (attempt.suspiciousActivity) {
-          attempt.suspiciousActivity.forEach(log => {
-            logs.push({
-              log,
-              studentName: student?.displayName || 'Unknown',
-              examTitle: exam?.title || 'Unknown',
-              attemptId: attempt.id
-            });
-          });
-        }
-      });
-      // Sort logs by timestamp descending
-      setRecentLogs(logs.sort((a, b) => b.log.timestamp - a.log.timestamp).slice(0, 20));
     });
 
     return () => {
-      studentsUnsub();
-      examsUnsub();
       attemptsUnsub();
     };
-  }, [allStudents, allExams]);
+  }, [fetchStaticData]);
+
+  // Compute logs separately when state updates
+  useEffect(() => {
+    if (activeAttempts.length === 0) {
+      setRecentLogs([]);
+      return;
+    }
+
+    const logs: { log: ActivityLog, studentName: string, examTitle: string, attemptId: string }[] = [];
+    activeAttempts.forEach(attempt => {
+      const student = allStudents[attempt.studentId];
+      const exam = allExams[attempt.examId];
+      if (attempt.suspiciousActivity) {
+        attempt.suspiciousActivity.forEach(log => {
+          logs.push({
+            log,
+            studentName: student?.displayName || 'Unknown',
+            examTitle: exam?.title || 'Unknown',
+            attemptId: attempt.id
+          });
+        });
+      }
+    });
+    setRecentLogs(logs.sort((a, b) => b.log.timestamp - a.log.timestamp).slice(0, 20));
+  }, [activeAttempts, allStudents, allExams]);
 
   const calculateProgress = (attempt: ExamAttempt) => {
     const exam = allExams[attempt.examId];
@@ -119,10 +112,22 @@ export const LiveMonitoring: React.FC = () => {
           </h2>
           <p className="text-muted-foreground">Real-time tracking of active student attempts and integrity alerts.</p>
         </div>
-        <Badge variant="outline" className="px-3 py-1 gap-2 bg-primary/5 border-primary/20">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          {activeAttempts.length} Active Students
-        </Badge>
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchStaticData} 
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh Names
+          </Button>
+          <Badge variant="outline" className="px-3 py-1 gap-2 bg-primary/5 border-primary/20">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            {activeAttempts.length} Active Students
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
