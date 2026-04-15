@@ -39,7 +39,20 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const [isResetting, setIsResetting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchStats = async (force = false) => {
+    // Check cache first
+    if (!force) {
+      const cached = sessionStorage.getItem('admin_stats');
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 120000) { // 2 minutes cache
+          setStats(data);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
     setIsRefreshing(true);
     try {
       const examsCol = collection(db, 'exams');
@@ -58,13 +71,16 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         getCountFromServer(query(studentsCol, where('role', '==', 'student')))
       ]);
 
-      setStats({
+      const newStats = {
         totalExams: totalExamsCount.data().count,
         activeExams: activeExamsCount.data().count,
         inactiveExams: totalExamsCount.data().count - activeExamsCount.data().count,
         submittedAttempts: submittedAttemptsCount.data().count,
         totalStudents: totalStudentsCount.data().count
-      });
+      };
+
+      setStats(newStats);
+      sessionStorage.setItem('admin_stats', JSON.stringify({ data: newStats, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
@@ -109,7 +125,19 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     }
   };
 
-  const fetchRecentActivity = async () => {
+  const fetchRecentActivity = async (force = false) => {
+    // Check cache
+    if (!force) {
+      const cached = sessionStorage.getItem('admin_recent_activity');
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 120000) { // 2 minutes cache
+          setRecentAttempts(data);
+          return;
+        }
+      }
+    }
+
     try {
       const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
       const snapshot = await getDocs(recentQuery);
@@ -128,9 +156,15 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         };
       }));
       setRecentAttempts(enriched);
+      sessionStorage.setItem('admin_recent_activity', JSON.stringify({ data: enriched, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error fetching recent activity:', error);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchStats(true);
+    fetchRecentActivity(true);
   };
 
   useEffect(() => {
@@ -289,12 +323,12 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={fetchStats} 
+          onClick={handleRefresh} 
           disabled={isRefreshing}
           className="gap-2"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh Stats
+          Refresh Dashboard
         </Button>
       </div>
 

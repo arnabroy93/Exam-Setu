@@ -6,7 +6,7 @@ import { Exam, ExamAttempt } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Clock, Trophy, Calendar, ArrowRight, AlertCircle } from 'lucide-react';
+import { BookOpen, Clock, Trophy, Calendar, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onViewResults: () => void }> = ({ onStartExam, onViewResults }) => {
   const { profile } = useAuth();
@@ -14,70 +14,99 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
   const [availableExams, setAvailableExams] = useState<Exam[]>([]);
   const [recentAttempts, setRecentAttempts] = useState<(ExamAttempt & { examTitle?: string })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchData = async (force = false) => {
+    if (!profile) return;
+    if (force) setIsRefreshing(true);
+      
+    // Check cache
+    if (!force) {
+      const cached = sessionStorage.getItem(`student_dashboard_${profile.uid}`);
+      if (cached) {
+        const { availableExams, recentAttempts, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 120000) { // 2 minutes cache
+          setAvailableExams(availableExams);
+          setRecentAttempts(recentAttempts);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    try {
+      // Fetch available exams (limit to 12 to save quota)
+      const examsQuery = query(
+        collection(db, 'exams'), 
+        where('status', '==', 'published'),
+        limit(12)
+      );
+      const examsSnapshot = await getDocs(examsQuery);
+      const examsData = examsSnapshot.docs.map(doc => doc.data() as Exam);
+      setAvailableExams(examsData);
+
+      // Fetch recent attempts
+      const attemptsQuery = query(
+        collection(db, 'attempts'),
+        where('studentId', '==', profile.uid),
+        orderBy('startTime', 'desc'),
+        limit(3)
+      );
+      const attemptsSnapshot = await getDocs(attemptsQuery);
+      const attemptsData = attemptsSnapshot.docs.map(doc => doc.data() as ExamAttempt);
+      
+      // Fetch unique exam IDs for titles
+      const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
+      const examMap: Record<string, string> = {};
+
+      // First check if we already have the exam in availableExams
+      examIds.forEach(id => {
+        const found = examsData.find(e => e.id === id);
+        if (found) examMap[id] = found.title;
+      });
+
+      // Fetch missing titles only
+      const missingIds = examIds.filter(id => !examMap[id]);
+      if (missingIds.length > 0) {
+        await Promise.all(missingIds.map(async (id) => {
+          try {
+            const examDoc = await getDoc(doc(db, 'exams', id));
+            examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
+          } catch (error) {
+            console.error('Error fetching exam title:', error);
+            examMap[id] = 'Unknown Exam';
+          }
+        }));
+      }
+
+      const enrichedAttempts = attemptsData.map(attempt => ({
+        ...attempt,
+        examTitle: examMap[attempt.examId]
+      }));
+
+      setRecentAttempts(enrichedAttempts);
+      
+      // Cache data
+      sessionStorage.setItem(`student_dashboard_${profile.uid}`, JSON.stringify({
+        availableExams: examsData,
+        recentAttempts: enrichedAttempts,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!profile) return;
-      try {
-        // Fetch available exams (limit to 12 to save quota)
-        const examsQuery = query(
-          collection(db, 'exams'), 
-          where('status', '==', 'published'),
-          limit(12)
-        );
-        const examsSnapshot = await getDocs(examsQuery);
-        const examsData = examsSnapshot.docs.map(doc => doc.data() as Exam);
-        setAvailableExams(examsData);
-
-        // Fetch recent attempts
-        const attemptsQuery = query(
-          collection(db, 'attempts'),
-          where('studentId', '==', profile.uid),
-          orderBy('startTime', 'desc'),
-          limit(3)
-        );
-        const attemptsSnapshot = await getDocs(attemptsQuery);
-        const attemptsData = attemptsSnapshot.docs.map(doc => doc.data() as ExamAttempt);
-        
-        // Fetch unique exam IDs for titles
-        const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
-        const examMap: Record<string, string> = {};
-
-        // First check if we already have the exam in availableExams
-        examIds.forEach(id => {
-          const found = examsData.find(e => e.id === id);
-          if (found) examMap[id] = found.title;
-        });
-
-        // Fetch missing titles only
-        const missingIds = examIds.filter(id => !examMap[id]);
-        if (missingIds.length > 0) {
-          await Promise.all(missingIds.map(async (id) => {
-            try {
-              const examDoc = await getDoc(doc(db, 'exams', id));
-              examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
-            } catch (error) {
-              console.error('Error fetching exam title:', error);
-              examMap[id] = 'Unknown Exam';
-            }
-          }));
-        }
-
-        const enrichedAttempts = attemptsData.map(attempt => ({
-          ...attempt,
-          examTitle: examMap[attempt.examId]
-        }));
-
-        setRecentAttempts(enrichedAttempts);
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, [profile]);
+
+  const handleRefresh = () => {
+    fetchData(true);
+  };
 
   const stats = [
     { title: 'Available Exams', value: availableExams.length, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10', view: 'available-exams' },
@@ -86,6 +115,24 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
 
   return (
     <div className="space-y-8">
+      {/* Header with Refresh */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Welcome, {profile?.displayName}</h2>
+          <p className="text-muted-foreground">Track your progress and available examinations.</p>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleRefresh} 
+          disabled={isRefreshing}
+          className="gap-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {stats.map((stat, i) => (

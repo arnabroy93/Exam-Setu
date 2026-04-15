@@ -17,6 +17,7 @@ export const LiveMonitoring: React.FC = () => {
   const [allStudents, setAllStudents] = useState<Record<string, UserProfile>>({});
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const refreshMetadata = () => {
     setAllStudents({});
@@ -24,6 +25,8 @@ export const LiveMonitoring: React.FC = () => {
   };
 
   useEffect(() => {
+    if (isPaused) return;
+
     const attemptsUnsub = onSnapshot(query(collection(db, 'attempts'), where('status', '==', 'in-progress')), (snapshot) => {
       const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
       setActiveAttempts(attemptsData);
@@ -33,7 +36,7 @@ export const LiveMonitoring: React.FC = () => {
     return () => {
       attemptsUnsub();
     };
-  }, []);
+  }, [isPaused]);
 
   // Fetch missing metadata when active attempts change
   useEffect(() => {
@@ -123,6 +126,24 @@ export const LiveMonitoring: React.FC = () => {
           <p className="text-muted-foreground">Real-time tracking of active student attempts and integrity alerts.</p>
         </div>
         <div className="flex items-center gap-4">
+          <Button 
+            variant={isPaused ? "default" : "outline"} 
+            size="sm" 
+            onClick={() => setIsPaused(!isPaused)}
+            className="gap-2"
+          >
+            {isPaused ? (
+              <>
+                <Activity className="w-4 h-4" />
+                Resume Updates
+              </>
+            ) : (
+              <>
+                <Clock className="w-4 h-4" />
+                Pause Updates
+              </>
+            )}
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 
