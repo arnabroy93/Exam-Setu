@@ -125,7 +125,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       }
     };
 
-    const timeoutId = setTimeout(syncAttempt, 2000); // Debounce sync
+    const timeoutId = setTimeout(syncAttempt, 30000); // Sync every 30 seconds instead of 2
     return () => clearTimeout(timeoutId);
   }, [hasStarted, isSubmitted, profile, attemptId, exam.id, exam.duration, answers, logs, endTime]);
 

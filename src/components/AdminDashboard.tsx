@@ -109,12 +109,10 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-
-    // Only listen to recent activity (very efficient)
-    const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
-    const unsubscribe = onSnapshot(recentQuery, async (snapshot) => {
+  const fetchRecentActivity = async () => {
+    try {
+      const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
+      const snapshot = await getDocs(recentQuery);
       const recentData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
       
       // Fetch names for these 5 attempts only
@@ -130,9 +128,14 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         };
       }));
       setRecentAttempts(enriched);
-    });
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+    }
+  };
 
-    return unsubscribe;
+  useEffect(() => {
+    fetchStats();
+    fetchRecentActivity();
   }, []);
 
   useEffect(() => {

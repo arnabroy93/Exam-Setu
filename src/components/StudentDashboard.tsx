@@ -19,10 +19,11 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
     const fetchData = async () => {
       if (!profile) return;
       try {
-        // Fetch available exams
+        // Fetch available exams (limit to 12 to save quota)
         const examsQuery = query(
           collection(db, 'exams'), 
-          where('status', '==', 'published')
+          where('status', '==', 'published'),
+          limit(12)
         );
         const examsSnapshot = await getDocs(examsQuery);
         const examsData = examsSnapshot.docs.map(doc => doc.data() as Exam);
@@ -38,19 +39,29 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         const attemptsSnapshot = await getDocs(attemptsQuery);
         const attemptsData = attemptsSnapshot.docs.map(doc => doc.data() as ExamAttempt);
         
-        // Fetch unique exam IDs
+        // Fetch unique exam IDs for titles
         const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
         const examMap: Record<string, string> = {};
 
-        await Promise.all(examIds.map(async (id) => {
-          try {
-            const examDoc = await getDoc(doc(db, 'exams', id));
-            examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
-          } catch (error) {
-            console.error('Error fetching exam title:', error);
-            examMap[id] = 'Unknown Exam';
-          }
-        }));
+        // First check if we already have the exam in availableExams
+        examIds.forEach(id => {
+          const found = examsData.find(e => e.id === id);
+          if (found) examMap[id] = found.title;
+        });
+
+        // Fetch missing titles only
+        const missingIds = examIds.filter(id => !examMap[id]);
+        if (missingIds.length > 0) {
+          await Promise.all(missingIds.map(async (id) => {
+            try {
+              const examDoc = await getDoc(doc(db, 'exams', id));
+              examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
+            } catch (error) {
+              console.error('Error fetching exam title:', error);
+              examMap[id] = 'Unknown Exam';
+            }
+          }));
+        }
 
         const enrichedAttempts = attemptsData.map(attempt => ({
           ...attempt,

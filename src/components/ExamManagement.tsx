@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, deleteDoc, doc } from 'firebase/firestore';
 import { Exam } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,13 +36,19 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  useEffect(() => {
-    const q = query(collection(db, 'exams'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchExams = async () => {
+    try {
+      const q = query(collection(db, 'exams'));
+      const snapshot = await getDocs(q);
       const examsData = snapshot.docs.map(doc => doc.data() as Exam);
       setExams(examsData.sort((a, b) => b.createdAt - a.createdAt));
-    });
-    return unsubscribe;
+    } catch (error) {
+      console.error('Error fetching exams:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchExams();
   }, []);
 
   const handleDelete = async () => {

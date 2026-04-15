@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save, RefreshCw } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save, RefreshCw, Activity } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -60,19 +60,23 @@ export const StudentReports: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [attemptToReset, setAttemptToReset] = useState<string | null>(null);
   const [isResettingAttempt, setIsResettingAttempt] = useState(false);
+  const [hasLoadedReports, setHasLoadedReports] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (loadAttempts = false) => {
     setIsRefreshing(true);
     try {
-      const [studentsSnap, attemptsSnap, examsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
-        getDocs(collection(db, 'attempts')),
-        getDocs(collection(db, 'exams'))
-      ]);
-
+      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
       setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
-      setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
-      setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+
+      if (loadAttempts) {
+        const [attemptsSnap, examsSnap] = await Promise.all([
+          getDocs(collection(db, 'attempts')),
+          getDocs(collection(db, 'exams'))
+        ]);
+        setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
+        setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+        setHasLoadedReports(true);
+      }
     } catch (error) {
       console.error('Error fetching reports data:', error);
     } finally {
@@ -82,7 +86,7 @@ export const StudentReports: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    fetchData(false);
   }, [fetchData]);
 
   const handleResetAttempt = async () => {
@@ -732,10 +736,22 @@ export const StudentReports: React.FC = () => {
           <p className="text-muted-foreground">Monitor student performance and anti-cheating logs.</p>
         </div>
         <div className="flex items-center gap-2">
+          {!hasLoadedReports && (
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={() => fetchData(true)} 
+              disabled={isRefreshing}
+              className="gap-2 bg-primary hover:bg-primary/90"
+            >
+              <Activity className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Load Detailed Reports
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={fetchData} 
+            onClick={() => fetchData(hasLoadedReports)} 
             disabled={isRefreshing}
             className="gap-2 mr-2"
           >

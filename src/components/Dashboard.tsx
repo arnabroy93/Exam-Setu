@@ -24,17 +24,7 @@ import { LiveMonitoring } from './LiveMonitoring';
 export const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
   const [view, setView] = useState<'dashboard' | 'create-exam' | 'taking-exam' | 'results' | 'manage-exams' | 'exam-details' | 'settings' | 'user-management' | 'student-reports' | 'live-monitoring'>('dashboard');
-  const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
-
-  useEffect(() => {
-    const q = query(collection(db, 'exams'), where('status', '==', 'published'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const examsData = snapshot.docs.map(doc => doc.data() as Exam);
-      setExams(examsData);
-    });
-    return unsubscribe;
-  }, []);
 
   if (view === 'create-exam') {
     return <ExamCreator onBack={() => setView('manage-exams')} initialExam={selectedExam || undefined} />;

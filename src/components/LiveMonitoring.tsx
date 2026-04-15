@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, getDocs, getDoc, doc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,35 +18,12 @@ export const LiveMonitoring: React.FC = () => {
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchStaticData = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const [studentsSnap, examsSnap] = await Promise.all([
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'exams'))
-      ]);
-      
-      const studentsMap: Record<string, UserProfile> = {};
-      studentsSnap.docs.forEach(doc => {
-        studentsMap[doc.id] = doc.data() as UserProfile;
-      });
-      setAllStudents(studentsMap);
-
-      const examsMap: Record<string, Exam> = {};
-      examsSnap.docs.forEach(doc => {
-        examsMap[doc.id] = doc.data() as Exam;
-      });
-      setAllExams(examsMap);
-    } catch (error) {
-      console.error('Error fetching static data:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
+  const refreshMetadata = () => {
+    setAllStudents({});
+    setAllExams({});
+  };
 
   useEffect(() => {
-    fetchStaticData();
-
     const attemptsUnsub = onSnapshot(query(collection(db, 'attempts'), where('status', '==', 'in-progress')), (snapshot) => {
       const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
       setActiveAttempts(attemptsData);
@@ -56,7 +33,40 @@ export const LiveMonitoring: React.FC = () => {
     return () => {
       attemptsUnsub();
     };
-  }, [fetchStaticData]);
+  }, []);
+
+  // Fetch missing metadata when active attempts change
+  useEffect(() => {
+    const fetchMissingMetadata = async () => {
+      const missingStudentIds = activeAttempts.map(a => a.studentId).filter(id => !allStudents[id]);
+      const missingExamIds = activeAttempts.map(a => a.examId).filter(id => !allExams[id]);
+
+      if (missingStudentIds.length === 0 && missingExamIds.length === 0) return;
+
+      try {
+        const [studentDocs, examDocs] = await Promise.all([
+          Promise.all(Array.from(new Set(missingStudentIds)).map((id: string) => getDoc(doc(db, 'users', id)))),
+          Promise.all(Array.from(new Set(missingExamIds)).map((id: string) => getDoc(doc(db, 'exams', id))))
+        ]);
+
+        setAllStudents(prev => {
+          const next = { ...prev };
+          studentDocs.forEach(d => { if (d.exists()) next[d.id] = d.data() as UserProfile; });
+          return next;
+        });
+
+        setAllExams(prev => {
+          const next = { ...prev };
+          examDocs.forEach(d => { if (d.exists()) next[d.id] = d.data() as Exam; });
+          return next;
+        });
+      } catch (error) {
+        console.error('Error fetching metadata:', error);
+      }
+    };
+
+    fetchMissingMetadata();
+  }, [activeAttempts, allStudents, allExams]);
 
   // Compute logs separately when state updates
   useEffect(() => {
@@ -116,7 +126,7 @@ export const LiveMonitoring: React.FC = () => {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={fetchStaticData} 
+            onClick={refreshMetadata} 
             disabled={isRefreshing}
             className="gap-2"
           >
