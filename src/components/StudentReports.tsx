@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -70,8 +70,8 @@ export const StudentReports: React.FC = () => {
 
       if (loadAttempts) {
         const [attemptsSnap, examsSnap] = await Promise.all([
-          getDocs(collection(db, 'attempts')),
-          getDocs(collection(db, 'exams'))
+          getDocs(query(collection(db, 'attempts'), limit(100), orderBy('startTime', 'desc'))),
+          getDocs(query(collection(db, 'exams'), limit(50)))
         ]);
         setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
         setExams(examsSnap.docs.map(doc => doc.data() as Exam));

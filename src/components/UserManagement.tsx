@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, getDocs, updateDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs, updateDoc, doc, query, orderBy, limit } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,7 +20,7 @@ export const UserManagement: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(50));
       const snapshot = await getDocs(q);
       const usersData = snapshot.docs.map(doc => doc.data() as UserProfile);
       setUsers(usersData);

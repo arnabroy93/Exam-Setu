@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, limit, orderBy } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
@@ -20,32 +20,51 @@ export const ResultsView: React.FC = () => {
     const fetchAttempts = async () => {
       if (!profile) return;
       try {
-        const q = query(collection(db, 'attempts'), where('studentId', '==', profile.uid));
+        const q = query(
+          collection(db, 'attempts'), 
+          where('studentId', '==', profile.uid),
+          limit(20),
+          orderBy('startTime', 'desc')
+        );
         const snapshot = await getDocs(q);
         const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
         
         // Fetch all unique exam IDs needed
         const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
         
-        // Fetch exam details for each attempt efficiently
+        // Fetch exam details for each attempt efficiently using a local cache
         const examMap: Record<string, Exam> = {};
+        
+        // Check session storage first
+        const cachedExams = JSON.parse(sessionStorage.getItem('exam_metadata_cache') || '{}');
+        
         await Promise.all(examIds.map(async (id) => {
+          if (cachedExams[id]) {
+            examMap[id] = cachedExams[id];
+            return;
+          }
+          
           try {
             const examDoc = await getDoc(doc(db, 'exams', id));
             if (examDoc.exists()) {
-              examMap[id] = examDoc.data() as Exam;
+              const examData = examDoc.data() as Exam;
+              examMap[id] = examData;
+              cachedExams[id] = examData;
             }
           } catch (error) {
             console.error('Error fetching exam:', id, error);
           }
         }));
+        
+        // Update cache
+        sessionStorage.setItem('exam_metadata_cache', JSON.stringify(cachedExams));
 
         const enrichedAttempts = attemptsData.map(attempt => ({
           ...attempt,
           exam: examMap[attempt.examId]
         }));
         
-        setAttempts(enrichedAttempts.sort((a, b) => b.startTime - a.startTime));
+        setAttempts(enrichedAttempts);
       } catch (error) {
         console.error('Error fetching results:', error);
       }

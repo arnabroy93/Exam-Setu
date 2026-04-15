@@ -96,26 +96,30 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         case 'active-exams':
         case 'inactive-exams':
         case 'total-exams':
-          const examsSnap = await getDocs(collection(db, 'exams'));
+          const examsSnap = await getDocs(query(collection(db, 'exams'), limit(50)));
           setExams(examsSnap.docs.map(doc => doc.data() as Exam));
           break;
         case 'total-attempts':
-          const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded'])));
+          const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded']), limit(50), orderBy('startTime', 'desc')));
           setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
-          // Also need students and exams for names
-          const [studentsSnap, examsSnap2] = await Promise.all([
-            getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
-            getDocs(collection(db, 'exams'))
+          
+          // Fetch only necessary student and exam metadata for these 50 attempts
+          const studentIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).studentId)));
+          const examIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).examId)));
+          
+          const [studentsData, examsData] = await Promise.all([
+            Promise.all(studentIds.map(id => getDoc(doc(db, 'users', id)))),
+            Promise.all(examIds.map(id => getDoc(doc(db, 'exams', id))))
           ]);
-          setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
-          setExams(examsSnap2.docs.map(doc => doc.data() as Exam));
+          
+          setStudents(studentsData.filter(d => d.exists()).map(d => d.data() as UserProfile));
+          setExams(examsData.filter(d => d.exists()).map(d => d.data() as Exam));
           break;
         case 'total-students':
-          const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+          const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
           setStudents(studentsSnap2.docs.map(doc => doc.data() as UserProfile));
-          // Need attempts to show count
-          const attemptsSnap2 = await getDocs(collection(db, 'attempts'));
-          setAttempts(attemptsSnap2.docs.map(doc => doc.data() as ExamAttempt));
+          // For student list, we just need a count of attempts, which we can't easily get per-student without many reads
+          // So we'll just show the students for now
           break;
       }
     } catch (error) {

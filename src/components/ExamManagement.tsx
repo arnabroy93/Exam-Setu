@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, query, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, deleteDoc, doc, limit, orderBy } from 'firebase/firestore';
 import { Exam } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,10 +38,10 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
 
   const fetchExams = async () => {
     try {
-      const q = query(collection(db, 'exams'));
+      const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'), limit(50));
       const snapshot = await getDocs(q);
       const examsData = snapshot.docs.map(doc => doc.data() as Exam);
-      setExams(examsData.sort((a, b) => b.createdAt - a.createdAt));
+      setExams(examsData);
     } catch (error) {
       console.error('Error fetching exams:', error);
     }
