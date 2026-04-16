@@ -3,6 +3,7 @@ import { auth, db, googleProvider } from './firebase';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
+import { logUserActivity } from './activityLogger';
 
 interface AuthContextType {
   user: User | null;
@@ -34,7 +35,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch (error: any) {
           console.error('Error fetching profile in auth state change:', error);
-          // Try to load from cache if quota exceeded
           if (error.message?.includes('Quota exceeded')) {
             const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
             if (cached) {
@@ -83,7 +83,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (err.message?.includes('Quota exceeded')) {
           const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
           if (cached) {
-            setProfile(JSON.parse(cached));
+            const parsed = JSON.parse(cached);
+            setProfile(parsed);
+            await logUserActivity(parsed, 'LOGIN', 'User logged in via cached profile due to quota limits');
             setLoading(false);
             return;
           }
@@ -97,12 +99,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!userDoc.exists()) {
         let finalRole = role;
         
-        // If trying to sign up as admin but not in default list, force to student
         if (role === 'admin' && !defaultAdmins.includes(firebaseUser.email || '')) {
           finalRole = 'student';
         }
 
-        // If trying to sign up as examiner but not in default list, force to student
         if (role === 'examiner' && !defaultExaminers.includes(firebaseUser.email || '')) {
           finalRole = 'student';
         }
@@ -117,16 +117,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(userDocRef, newProfile);
         setProfile(newProfile);
         localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(newProfile));
+        await logUserActivity(newProfile, 'REGISTER', `New user registered as ${finalRole}`);
       } else {
         const existingProfile = userDoc.data() as UserProfile;
         
-        // Always update basic info to ensure it's fresh and recorded
         const updates: Partial<UserProfile> = {
           displayName: firebaseUser.displayName || existingProfile.displayName,
           email: firebaseUser.email || existingProfile.email,
         };
 
-        // Auto-upgrade logic for default roles if they exist but have wrong role
         if (defaultAdmins.includes(firebaseUser.email || '') && existingProfile.role !== 'admin') {
           updates.role = 'admin';
         } else if (defaultExaminers.includes(firebaseUser.email || '') && existingProfile.role !== 'examiner' && existingProfile.role !== 'admin') {
@@ -139,23 +138,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const updatedProfile = { ...existingProfile, ...updates } as UserProfile;
             setProfile(updatedProfile);
             localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(updatedProfile));
+            await logUserActivity(updatedProfile, 'LOGIN', 'User logged in and profile updated');
           } catch (e) {
-            // If update fails (e.g. quota), still set the profile from what we have
             setProfile(existingProfile);
             localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(existingProfile));
+            await logUserActivity(existingProfile, 'LOGIN', 'User logged in (profile update failed due to quota)');
           }
         } else {
           setProfile(existingProfile);
           localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(existingProfile));
+          await logUserActivity(existingProfile, 'LOGIN', 'User logged in');
         }
       }
     } catch (error: any) {
       console.error('Sign in error:', error);
       if (error.code === 'auth/cancelled-popup-request') {
-        // This happens if multiple popups are requested, we can ignore it or log it
         console.warn('Multiple popup requests detected.');
       } else if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/popup-blocked') {
-        // These are expected user/browser behaviors, throw them to be handled by UI
         throw error;
       } else {
         throw error;
@@ -166,6 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    if (profile) await logUserActivity(profile, 'LOGOUT', 'User logged out');
     await firebaseSignOut(auth);
   };
 

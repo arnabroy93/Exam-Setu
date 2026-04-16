@@ -66,3 +66,14 @@ export interface ActivityLog {
   type: 'tab-switch' | 'fullscreen-exit' | 'copy-paste' | 'right-click';
   details: string;
 }
+
+export interface UserActivityLog {
+  id?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  action: string;
+  details: string;
+  timestamp: number;
+}
+

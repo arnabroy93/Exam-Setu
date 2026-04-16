@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers } from 'lucide-react';
+import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers, ClipboardList } from 'lucide-react';
 import { ExamCreator } from './ExamCreator';
 import { ExamInterface } from './ExamInterface';
 import { ResultsView } from './ResultsView';
@@ -20,10 +20,11 @@ import { UserManagement } from './UserManagement';
 import { AdminDashboard } from './AdminDashboard';
 import { StudentReports } from './StudentReports';
 import { LiveMonitoring } from './LiveMonitoring';
+import { UserActivitiesLog } from './UserActivitiesLog';
 
 export const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
-  const [view, setView] = useState<'dashboard' | 'create-exam' | 'taking-exam' | 'results' | 'manage-exams' | 'exam-details' | 'settings' | 'user-management' | 'student-reports' | 'live-monitoring'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'create-exam' | 'taking-exam' | 'results' | 'manage-exams' | 'exam-details' | 'settings' | 'user-management' | 'student-reports' | 'live-monitoring' | 'user-activities'>('dashboard');
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
   const [quotaError, setQuotaError] = useState(false);
 
@@ -74,6 +75,7 @@ export const Dashboard: React.FC = () => {
                 <>
                   <NavItem icon={<Users className="w-5 h-5" />} label="User Management" active={view === 'user-management'} onClick={() => setView('user-management')} />
                   <NavItem icon={<FileText className="w-5 h-5" />} label="Student Reports" active={view === 'student-reports'} onClick={() => setView('student-reports')} />
+                  <NavItem icon={<ClipboardList className="w-5 h-5" />} label="User Activities" active={view === 'user-activities'} onClick={() => setView('user-activities')} />
                 </>
               )}
               {profile?.role === 'examiner' && (
@@ -126,6 +128,7 @@ export const Dashboard: React.FC = () => {
           {view === 'settings' && <SettingsView />}
           {view === 'results' && <ResultsView />}
           {view === 'user-management' && <UserManagement />}
+          {view === 'user-activities' && <UserActivitiesLog />}
           {view === 'student-reports' && <StudentReports />}
           {view === 'live-monitoring' && <LiveMonitoring />}
           {view === 'manage-exams' && (

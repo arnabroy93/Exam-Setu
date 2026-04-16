@@ -12,6 +12,7 @@ import { db } from '../lib/firebase';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { OperationType, handleFirestoreError } from '../lib/firebase';
+import { logUserActivity } from '../lib/activityLogger';
 
 export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> = ({ onBack, initialExam }) => {
   const { profile } = useAuth();
@@ -106,6 +107,10 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
 
     try {
       await setDoc(doc(db, 'exams', examId), newExam);
+      
+      const action = initialExam ? 'UPDATE_EXAM' : 'CREATE_EXAM';
+      await logUserActivity(profile, action, `${initialExam ? 'Updated' : 'Created'} exam: ${title}`);
+      
       setSuccess(true);
       setTimeout(() => {
         onBack();

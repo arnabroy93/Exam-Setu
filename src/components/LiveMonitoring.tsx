@@ -19,7 +19,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+import { useAuth } from '../lib/AuthContext';
+import { logUserActivity } from '../lib/activityLogger';
+
 export const LiveMonitoring: React.FC = () => {
+  const { profile } = useAuth();
   const [activeAttempts, setActiveAttempts] = useState<(ExamAttempt & { student?: UserProfile, exam?: Exam })[]>([]);
   const [recentLogs, setRecentLogs] = useState<{ log: ActivityLog, studentName: string, examTitle: string, attemptId: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +40,7 @@ export const LiveMonitoring: React.FC = () => {
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'attempts', attemptToDelete));
+      await logUserActivity(profile, 'FORCE_RESET_ATTEMPT', `Force reset attempt: ${attemptToDelete}`);
       setAttemptToDelete(null);
     } catch (error) {
       console.error('Error deleting attempt:', error);

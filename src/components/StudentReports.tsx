@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
+import { useAuth } from '../lib/AuthContext';
+import { logUserActivity } from '../lib/activityLogger';
 import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,6 +36,7 @@ declare module 'jspdf' {
 }
 
 export const StudentReports: React.FC = () => {
+  const { profile } = useAuth();
   const [view, setView] = useState<'list' | 'student-details' | 'grading'>('list');
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
@@ -210,6 +213,11 @@ export const StudentReports: React.FC = () => {
 
       await batch.commit();
       
+      if (profile) {
+        const deletedNames = studentsToDelete.map(id => students.find(s => s.uid === id)?.displayName || 'Unknown').join(', ');
+        await logUserActivity(profile, 'DELETE_REPORT', `Deleted student records for: ${deletedNames}`);
+      }
+      
       // Clear selection if deleted students were selected
       setSelectedStudentIds(prev => prev.filter(id => !studentsToDelete.includes(id)));
       setIsDeleteDialogOpen(false);
@@ -340,6 +348,12 @@ export const StudentReports: React.FC = () => {
         score: totalScore,
         status: 'graded'
       });
+      
+      const student = students.find(s => s.uid === gradingAttempt.studentId);
+      const action = gradingAttempt.status === 'graded' ? 'REGRADED_EXAM' : 'GRADED_EXAM';
+      if (profile && student) {
+        await logUserActivity(profile, action, `${action === 'REGRADED_EXAM' ? 'Regraded' : 'Graded'} exam "${exam.title}" for student ${student.displayName}`);
+      }
       
       setGradingAttempt(null);
       setManualGrades({});

@@ -9,6 +9,7 @@ import { db } from '../lib/firebase';
 import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { calculateAutoScore } from '../lib/gradingUtils';
+import { logUserActivity } from '../lib/activityLogger';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -178,6 +179,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       await setDoc(doc(db, 'attempts', attemptId), finalAttempt);
       console.log('Submission successful');
       
+      if (profile) {
+        logUserActivity(profile, 'SUBMITTED_EXAM', `Submitted exam attempt: ${exam.title}${!hasSubjective ? ` (Auto-Score: ${autoScore}%)` : ''}`);
+      }
+      
       setIsSubmitted(true);
       setIsSubmitDialogOpen(false);
       
@@ -308,6 +313,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     } else {
       setIsFullScreen(true);
       setHasStarted(true);
+    }
+    
+    if (profile) {
+      logUserActivity(profile, 'STARTED_EXAM', `Started taking exam: ${exam.title}`);
     }
   };
 

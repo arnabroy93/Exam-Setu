@@ -9,6 +9,7 @@ import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw } from 'lucide
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../lib/AuthContext';
+import { logUserActivity } from '../lib/activityLogger';
 
 export const UserManagement: React.FC = () => {
   const { profile: currentUserProfile } = useAuth();
@@ -41,7 +42,13 @@ export const UserManagement: React.FC = () => {
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, { role: newRole });
       // Update local state
+      const updatedUser = users.find(u => u.uid === userId);
+      
       setUsers(prev => prev.map(u => u.uid === userId ? { ...u, role: newRole } : u));
+      
+      if (currentUserProfile && updatedUser) {
+        await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${updatedUser.email} to ${newRole}`);
+      }
     } catch (error) {
       console.error('Error updating user role:', error);
       alert('Failed to update user role. You might not have permission.');

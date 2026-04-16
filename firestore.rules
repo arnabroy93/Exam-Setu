@@ -105,6 +105,16 @@ service cloud.firestore {
              data.status in ['in-progress', 'submitted', 'graded'];
     }
 
+    function isValidUserActivity(data) {
+      return data.keys().hasAll(['userId', 'userName', 'userEmail', 'action', 'details', 'timestamp']) &&
+             data.userId is string &&
+             data.userName is string &&
+             data.userEmail is string &&
+             data.action is string &&
+             data.details is string &&
+             data.timestamp is number;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -116,6 +126,14 @@ service cloud.firestore {
       allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) ||
                       (isAdmin() && isValidUser(request.resource.data));
       allow delete: if isAdmin();
+    }
+
+    match /user_activities/{activityId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && 
+                    isOwner(request.resource.data.userId) && 
+                    isValidUserActivity(request.resource.data);
+      allow update, delete: if false; // Logs should be immutable
     }
 
     match /exams/{examId} {

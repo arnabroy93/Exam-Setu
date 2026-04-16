@@ -19,14 +19,19 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useAuth } from '../lib/AuthContext';
+import { logUserActivity } from '../lib/activityLogger';
 
 export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ onAction }) => {
+  const { profile } = useAuth();
   const [stats, setStats] = useState({
     totalExams: 0,
     submittedAttempts: 0,
     totalStudents: 0,
     activeExams: 0,
-    inactiveExams: 0
+    inactiveExams: 0,
+    totalExaminers: 0,
+    activeStudents: 0
   });
   const [exams, setExams] = useState<Exam[]>([]);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
@@ -63,12 +68,16 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         totalExamsCount,
         activeExamsCount,
         submittedAttemptsCount,
-        totalStudentsCount
+        totalStudentsCount,
+        totalExaminersCount,
+        activeStudentsCount
       ] = await Promise.all([
         getCountFromServer(examsCol),
         getCountFromServer(query(examsCol, where('status', '==', 'published'))),
         getCountFromServer(query(attemptsCol, where('status', 'in', ['submitted', 'graded']))),
-        getCountFromServer(query(studentsCol, where('role', '==', 'student')))
+        getCountFromServer(query(studentsCol, where('role', '==', 'student'))),
+        getCountFromServer(query(studentsCol, where('role', '==', 'examiner'))),
+        getCountFromServer(query(attemptsCol, where('status', '==', 'in-progress')))
       ]);
 
       const newStats = {
@@ -76,7 +85,9 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         activeExams: activeExamsCount.data().count,
         inactiveExams: totalExamsCount.data().count - activeExamsCount.data().count,
         submittedAttempts: submittedAttemptsCount.data().count,
-        totalStudents: totalStudentsCount.data().count
+        totalStudents: totalStudentsCount.data().count,
+        totalExaminers: totalExaminersCount.data().count,
+        activeStudents: activeStudentsCount.data().count
       };
 
       setStats(newStats);
@@ -136,8 +147,29 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         case 'total-students':
           const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
           setStudents(studentsSnap2.docs.map(doc => doc.data() as UserProfile));
-          // For student list, we just need a count of attempts, which we can't easily get per-student without many reads
-          // So we'll just show the students for now
+          break;
+        case 'total-examiners':
+          const examinersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'examiner'), limit(50)));
+          setStudents(examinersSnap.docs.map(doc => doc.data() as UserProfile));
+          break;
+        case 'active-students':
+          // For active students, we fetch students with in-progress attempts
+          const activeAttemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', '==', 'in-progress'), limit(50)));
+          const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as ExamAttempt).studentId)));
+          
+          if (activeStudentIds.length > 0) {
+            const activeStudentBatches = [];
+            for (let i = 0; i < activeStudentIds.length; i += 30) {
+              const batch = activeStudentIds.slice(i, i + 30);
+              activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+            }
+            const activeStudentSnaps = await Promise.all(activeStudentBatches);
+            const activeStuds: UserProfile[] = [];
+            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => activeStuds.push(d.data() as UserProfile)));
+            setStudents(activeStuds);
+          } else {
+            setStudents([]);
+          }
           break;
       }
     } catch (error) {
@@ -213,6 +245,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     setIsResetting(true);
     try {
       await deleteDoc(doc(db, 'attempts', attemptToReset));
+      await logUserActivity(profile, 'RESET_ATTEMPT', `Reset attempt: ${attemptToReset}`);
       setAttemptToReset(null);
       fetchStats(); // Refresh stats after delete
     } catch (error) {
@@ -228,6 +261,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     { id: 'inactive-exams', title: 'Inactive Exams', value: stats.inactiveExams, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-500/10', desc: 'Drafts & Archived' },
     { id: 'total-attempts', title: 'Submitted Attempts', value: stats.submittedAttempts, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Exams completed' },
     { id: 'total-students', title: 'Total Students', value: stats.totalStudents, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Registered students' },
+    { id: 'active-students', title: 'Active Students', value: stats.activeStudents, icon: CheckCircle2, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Taking exams now' },
+    { id: 'total-examiners', title: 'Total Examiners', value: stats.totalExaminers, icon: Users, color: 'text-pink-500', bg: 'bg-pink-500/10', desc: 'Registered examiners' },
     { id: 'total-exams', title: 'Exams Created', value: stats.totalExams, icon: FileText, color: 'text-orange-500', bg: 'bg-orange-500/10', desc: 'All created exams' },
   ];
 
@@ -327,6 +362,40 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
             );
           }
         };
+      case 'total-examiners':
+        return {
+          title: 'Registered Examiners',
+          description: 'All examiners registered on the platform.',
+          data: students.filter(s => s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || s.email.toLowerCase().includes(searchTerm.toLowerCase())),
+          columns: ['Name', 'Email', 'Joined', 'Role'],
+          renderRow: (examiner: UserProfile) => (
+            <TableRow key={examiner.uid}>
+              <TableCell className="font-medium">{examiner.displayName}</TableCell>
+              <TableCell>{examiner.email}</TableCell>
+              <TableCell>{new Date(examiner.createdAt).toLocaleDateString()}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className="capitalize">{examiner.role}</Badge>
+              </TableCell>
+            </TableRow>
+          )
+        };
+      case 'active-students':
+        return {
+          title: 'Active Students',
+          description: 'Students currently taking exams (in-progress).',
+          data: students.filter(s => s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || s.email.toLowerCase().includes(searchTerm.toLowerCase())),
+          columns: ['Name', 'Email', 'Joined', 'Status'],
+          renderRow: (student: UserProfile) => (
+            <TableRow key={student.uid}>
+              <TableCell className="font-medium">{student.displayName}</TableCell>
+              <TableCell>{student.email}</TableCell>
+              <TableCell>{new Date(student.createdAt).toLocaleDateString()}</TableCell>
+              <TableCell>
+                <Badge variant="default" className="bg-indigo-500 hover:bg-indigo-600">In Progress</Badge>
+              </TableCell>
+            </TableRow>
+          )
+        };
       case 'total-exams':
         return {
           title: 'All Examinations',
@@ -357,7 +426,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-muted-foreground">Overview of system performance and activity.</p>
+          <h2 className="text-3xl font-bold tracking-tight">Welcome, {profile?.displayName}</h2>
+          <p className="text-muted-foreground mt-1">Overview of system performance and activity.</p>
         </div>
         <Button 
           variant="outline" 
