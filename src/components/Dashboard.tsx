@@ -94,7 +94,11 @@ export const Dashboard: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
         <header className="h-16 border-b border-border bg-card flex items-center justify-between px-8">
-          <h2 className="text-xl font-semibold">Welcome, {profile?.displayName}</h2>
+          <h2 className="text-xl font-semibold">
+            {profile?.role === 'admin' && 'Admin Dashboard'}
+            {profile?.role === 'examiner' && 'Examiner Dashboard'}
+            {profile?.role === 'student' && 'Student Dashboard'}
+          </h2>
           <div className="flex items-center gap-4">
             {quotaError && (
               <Badge variant="destructive" className="animate-pulse gap-1">

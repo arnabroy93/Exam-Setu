@@ -357,7 +357,6 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
           <p className="text-muted-foreground">Overview of system performance and activity.</p>
         </div>
         <Button 
@@ -473,7 +472,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                       </div>
                       <div>
                         <p className="font-medium">{attempt.studentName}</p>
-                        <p className="text-sm text-muted-foreground">Completed: {attempt.examTitle}</p>
+                        <p className="text-sm text-muted-foreground">{attempt.examTitle}</p>
                       </div>
                     </div>
                     <div className="text-right">

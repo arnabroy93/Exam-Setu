@@ -118,7 +118,6 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       {/* Header with Refresh */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Welcome, {profile?.displayName}</h2>
           <p className="text-muted-foreground">Track your progress and available examinations.</p>
         </div>
         <Button 
