@@ -23,11 +23,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setProfile(userDoc.data() as UserProfile);
-        } else {
-          setProfile(null);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const profileData = userDoc.data() as UserProfile;
+            setProfile(profileData);
+            localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(profileData));
+          } else {
+            setProfile(null);
+          }
+        } catch (error: any) {
+          console.error('Error fetching profile in auth state change:', error);
+          // Try to load from cache if quota exceeded
+          if (error.message?.includes('Quota exceeded')) {
+            const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
+            if (cached) {
+              try {
+                setProfile(JSON.parse(cached));
+              } catch (e) {
+                setProfile(null);
+              }
+            }
+          } else {
+            setProfile(null);
+          }
         }
       } else {
         setProfile(null);
@@ -57,7 +76,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDoc = await getDoc(userDocRef);
+      let userDoc;
+      try {
+        userDoc = await getDoc(userDocRef);
+      } catch (err: any) {
+        if (err.message?.includes('Quota exceeded')) {
+          const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
+          if (cached) {
+            setProfile(JSON.parse(cached));
+            setLoading(false);
+            return;
+          }
+        }
+        throw err;
+      }
       
       const defaultAdmins = ['arnab.roy@anudip.org', 'piem@anudip.org'];
       const defaultExaminers = ['rashmi.mukherjee@anudip.org'];
@@ -84,6 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         await setDoc(userDocRef, newProfile);
         setProfile(newProfile);
+        localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(newProfile));
       } else {
         const existingProfile = userDoc.data() as UserProfile;
         
@@ -101,10 +134,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (Object.keys(updates).length > 0) {
-          await updateDoc(userDocRef, updates);
-          setProfile({ ...existingProfile, ...updates } as UserProfile);
+          try {
+            await updateDoc(userDocRef, updates);
+            const updatedProfile = { ...existingProfile, ...updates } as UserProfile;
+            setProfile(updatedProfile);
+            localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(updatedProfile));
+          } catch (e) {
+            // If update fails (e.g. quota), still set the profile from what we have
+            setProfile(existingProfile);
+            localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(existingProfile));
+          }
         } else {
           setProfile(existingProfile);
+          localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(existingProfile));
         }
       }
     } catch (error: any) {

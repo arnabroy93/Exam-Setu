@@ -103,17 +103,35 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded']), limit(50), orderBy('startTime', 'desc')));
           setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
           
-          // Fetch only necessary student and exam metadata for these 50 attempts
+          // Fetch only necessary student and exam metadata for these 50 attempts in batches
           const studentIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).studentId)));
           const examIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).examId)));
           
-          const [studentsData, examsData] = await Promise.all([
-            Promise.all(studentIds.map(id => getDoc(doc(db, 'users', id)))),
-            Promise.all(examIds.map(id => getDoc(doc(db, 'exams', id))))
+          const studentBatches = [];
+          for (let i = 0; i < studentIds.length; i += 30) {
+            const batch = studentIds.slice(i, i + 30);
+            studentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+          }
+
+          const examBatches = [];
+          for (let i = 0; i < examIds.length; i += 30) {
+            const batch = examIds.slice(i, i + 30);
+            examBatches.push(getDocs(query(collection(db, 'exams'), where('__name__', 'in', batch))));
+          }
+
+          const [studentSnaps, examSnaps] = await Promise.all([
+            Promise.all(studentBatches),
+            Promise.all(examBatches)
           ]);
           
-          setStudents(studentsData.filter(d => d.exists()).map(d => d.data() as UserProfile));
-          setExams(examsData.filter(d => d.exists()).map(d => d.data() as Exam));
+          const allStudents: UserProfile[] = [];
+          studentSnaps.forEach(snap => snap.docs.forEach(d => allStudents.push(d.data() as UserProfile)));
+          
+          const allExams: Exam[] = [];
+          examSnaps.forEach(snap => snap.docs.forEach(d => allExams.push(d.data() as Exam)));
+
+          setStudents(allStudents);
+          setExams(allExams);
           break;
         case 'total-students':
           const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
@@ -145,20 +163,28 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     try {
       const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
       const snapshot = await getDocs(recentQuery);
-      const recentData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
+      const recentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
       
-      // Fetch names for these 5 attempts only
-      const enriched = await Promise.all(recentData.map(async (attempt) => {
-        const [studentDoc, examDoc] = await Promise.all([
-          getDoc(doc(db, 'users', attempt.studentId)),
-          getDoc(doc(db, 'exams', attempt.examId))
-        ]);
-        return {
-          ...attempt,
-          studentName: studentDoc.exists() ? (studentDoc.data() as UserProfile).displayName : 'Unknown Student',
-          examTitle: examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam'
-        };
+      // Fetch names for these 5 attempts in batches
+      const studentIds = Array.from(new Set(recentData.map(a => a.studentId)));
+      const examIds = Array.from(new Set(recentData.map(a => a.examId)));
+
+      const [studentSnaps, examSnaps] = await Promise.all([
+        studentIds.length > 0 ? getDocs(query(collection(db, 'users'), where('__name__', 'in', studentIds))) : Promise.resolve({ docs: [] }),
+        examIds.length > 0 ? getDocs(query(collection(db, 'exams'), where('__name__', 'in', examIds))) : Promise.resolve({ docs: [] })
+      ]);
+
+      const studentMap: Record<string, string> = {};
+      const examMap: Record<string, string> = {};
+      studentSnaps.docs.forEach(d => { studentMap[d.id] = (d.data() as UserProfile).displayName; });
+      examSnaps.docs.forEach(d => { examMap[d.id] = (d.data() as Exam).title; });
+
+      const enriched = recentData.map(attempt => ({
+        ...attempt,
+        studentName: studentMap[attempt.studentId] || 'Unknown Student',
+        examTitle: examMap[attempt.examId] || 'Unknown Exam'
       }));
+
       setRecentAttempts(enriched);
       sessionStorage.setItem('admin_recent_activity', JSON.stringify({ data: enriched, timestamp: Date.now() }));
     } catch (error) {

@@ -52,26 +52,44 @@ export const LiveMonitoring: React.FC = () => {
   // Fetch missing metadata when active attempts change
   useEffect(() => {
     const fetchMissingMetadata = async () => {
-      const missingStudentIds = activeAttempts.map(a => a.studentId).filter(id => !allStudents[id]);
-      const missingExamIds = activeAttempts.map(a => a.examId).filter(id => !allExams[id]);
+      const missingStudentIds = Array.from(new Set(activeAttempts.map(a => a.studentId).filter(id => !allStudents[id])));
+      const missingExamIds = Array.from(new Set(activeAttempts.map(a => a.examId).filter(id => !allExams[id])));
 
       if (missingStudentIds.length === 0 && missingExamIds.length === 0) return;
 
       try {
-        const [studentDocs, examDocs] = await Promise.all([
-          Promise.all(Array.from(new Set(missingStudentIds)).map((id: string) => getDoc(doc(db, 'users', id)))),
-          Promise.all(Array.from(new Set(missingExamIds)).map((id: string) => getDoc(doc(db, 'exams', id))))
+        // Fetch students in batches of 30 (Firestore IN query limit)
+        const studentBatches = [];
+        for (let i = 0; i < missingStudentIds.length; i += 30) {
+          const batch = missingStudentIds.slice(i, i + 30);
+          studentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+        }
+
+        // Fetch exams in batches of 30
+        const examBatches = [];
+        for (let i = 0; i < missingExamIds.length; i += 30) {
+          const batch = missingExamIds.slice(i, i + 30);
+          examBatches.push(getDocs(query(collection(db, 'exams'), where('__name__', 'in', batch))));
+        }
+
+        const [studentResults, examResults] = await Promise.all([
+          Promise.all(studentBatches),
+          Promise.all(examBatches)
         ]);
 
         setAllStudents(prev => {
           const next = { ...prev };
-          studentDocs.forEach(d => { if (d.exists()) next[d.id] = d.data() as UserProfile; });
+          studentResults.forEach(snap => {
+            snap.docs.forEach(d => { next[d.id] = d.data() as UserProfile; });
+          });
           return next;
         });
 
         setAllExams(prev => {
           const next = { ...prev };
-          examDocs.forEach(d => { if (d.exists()) next[d.id] = d.data() as Exam; });
+          examResults.forEach(snap => {
+            snap.docs.forEach(d => { next[d.id] = d.data() as Exam; });
+          });
           return next;
         });
       } catch (error) {
@@ -80,7 +98,7 @@ export const LiveMonitoring: React.FC = () => {
     };
 
     fetchMissingMetadata();
-  }, [activeAttempts, allStudents, allExams]);
+  }, [activeAttempts]);
 
   // Compute logs separately when state updates
   useEffect(() => {
