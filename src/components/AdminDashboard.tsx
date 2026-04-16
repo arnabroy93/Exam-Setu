@@ -271,7 +271,17 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         return {
           title: 'Submitted Exam Attempts',
           description: 'Complete history of all submitted and graded exams.',
-          data: attempts.filter(a => a.status === 'submitted' || a.status === 'graded').filter(a => a.id.toLowerCase().includes(searchTerm.toLowerCase())),
+          data: attempts.filter(a => a.status === 'submitted' || a.status === 'graded').filter(a => {
+            const student = students.find(s => s.uid === a.studentId);
+            const exam = exams.find(e => e.id === a.examId);
+            const searchLower = searchTerm.toLowerCase();
+            return (
+              (student?.displayName || '').toLowerCase().includes(searchLower) ||
+              (student?.email || '').toLowerCase().includes(searchLower) ||
+              (exam?.title || '').toLowerCase().includes(searchLower) ||
+              a.id.toLowerCase().includes(searchLower)
+            );
+          }),
           columns: ['Student', 'Exam', 'Status', 'Score', 'Date', 'Actions'],
           renderRow: (attempt: ExamAttempt) => {
             const student = students.find(s => s.uid === attempt.studentId);

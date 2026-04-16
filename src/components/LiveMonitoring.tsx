@@ -1,13 +1,23 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, orderBy, getDocs, getDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, getDocs, getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const LiveMonitoring: React.FC = () => {
   const [activeAttempts, setActiveAttempts] = useState<(ExamAttempt & { student?: UserProfile, exam?: Exam })[]>([]);
@@ -18,6 +28,21 @@ export const LiveMonitoring: React.FC = () => {
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAttempt = async () => {
+    if (!attemptToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'attempts', attemptToDelete));
+      setAttemptToDelete(null);
+    } catch (error) {
+      console.error('Error deleting attempt:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const refreshMetadata = () => {
     setAllStudents({});
@@ -234,6 +259,15 @@ export const LiveMonitoring: React.FC = () => {
                             <p className="text-xs text-muted-foreground">Started</p>
                             <p className="text-sm font-medium">{new Date(attempt.startTime).toLocaleTimeString()}</p>
                           </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8 ml-2"
+                            onClick={() => setAttemptToDelete(attempt.id)}
+                            title="Force Reset Attempt"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                           {suspiciousCount > 0 && (
                             <Badge variant="destructive" className="animate-pulse gap-1">
                               <AlertTriangle className="w-3 h-3" />
@@ -306,6 +340,23 @@ export const LiveMonitoring: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={!!attemptToDelete} onOpenChange={(open) => !open && setAttemptToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force Reset Attempt?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will instantly delete this live exam session. Use this if a student is stuck or needs to restart due to a technical failure. The student will be able to start a fresh attempt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAttempt} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting ? 'Resetting...' : 'Force Reset'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
