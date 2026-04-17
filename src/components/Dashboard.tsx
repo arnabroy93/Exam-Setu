@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers, ClipboardList } from 'lucide-react';
+import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers, ClipboardList, AlertTriangle } from 'lucide-react';
 import { ExamCreator } from './ExamCreator';
 import { ExamInterface } from './ExamInterface';
 import { ResultsView } from './ResultsView';

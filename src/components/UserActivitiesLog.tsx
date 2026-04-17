@@ -5,7 +5,7 @@ import { UserActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Download, FileSpreadsheet, FileText, Checkbox } from 'lucide-react';
+import { Search, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';

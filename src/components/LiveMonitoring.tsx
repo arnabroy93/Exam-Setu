@@ -355,7 +355,7 @@ export const LiveMonitoring: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel variant="outline" size="default">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteAttempt} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {isDeleting ? 'Resetting...' : 'Force Reset'}
             </AlertDialogAction>
