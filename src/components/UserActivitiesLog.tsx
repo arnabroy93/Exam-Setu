@@ -5,7 +5,7 @@ import { UserActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Download, FileSpreadsheet, FileText } from 'lucide-react';
+import { Search, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -16,11 +16,15 @@ export const UserActivitiesLog: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(15);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'user_activities'), orderBy('timestamp', 'desc'), limit(500));
+      const q = query(collection(db, 'user_activities'), orderBy('timestamp', 'desc'), limit(1000));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserActivityLog));
       setLogs(data);
@@ -37,18 +41,28 @@ export const UserActivitiesLog: React.FC = () => {
   }, [fetchLogs]);
 
   useEffect(() => {
-    if (!searchTerm) {
-      setFilteredLogs(logs);
-      return;
-    }
     const lower = searchTerm.toLowerCase();
-    setFilteredLogs(logs.filter(log => 
+    const filtered = searchTerm ? logs.filter(log => 
       log.userName.toLowerCase().includes(lower) ||
       log.userEmail.toLowerCase().includes(lower) ||
       log.action.toLowerCase().includes(lower) ||
       log.details.toLowerCase().includes(lower)
-    ));
+    ) : logs;
+    
+    setFilteredLogs(filtered);
+    setCurrentPage(1); // Reset to first page on search
   }, [searchTerm, logs]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + itemsPerPage);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -180,7 +194,7 @@ export const UserActivitiesLog: React.FC = () => {
                       type="checkbox" 
                       checked={selectedLogs.size === filteredLogs.length && filteredLogs.length > 0}
                       onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="rounded border-gray-300"
+                      className="rounded border-gray-300 cursor-pointer"
                     />
                   </th>
                   <th className="p-3 font-semibold border-b">Timestamp</th>
@@ -190,34 +204,34 @@ export const UserActivitiesLog: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs.length === 0 ? (
+                {paginatedLogs.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-muted-foreground">No logs found.</td>
                   </tr>
                 ) : (
-                  filteredLogs.map(log => (
-                    <tr key={log.id} className="border-b last:border-0 hover:bg-muted/30">
+                  paginatedLogs.map(log => (
+                    <tr key={log.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="p-3">
                         <input 
                           type="checkbox" 
                           checked={selectedLogs.has(log.id as string)}
                           onChange={(e) => handleSelectOne(log.id as string, e.target.checked)}
-                          className="rounded border-gray-300"
+                          className="rounded border-gray-300 cursor-pointer"
                         />
                       </td>
-                      <td className="p-3 whitespace-nowrap text-muted-foreground">
+                      <td className="p-3 whitespace-nowrap text-muted-foreground tabular-nums">
                         {new Date(log.timestamp).toLocaleString()}
                       </td>
                       <td className="p-3">
-                        <div className="font-medium">{log.userName}</div>
-                        <div className="text-xs text-muted-foreground">{log.userEmail}</div>
+                        <div className="font-semibold text-foreground">{log.userName}</div>
+                        <div className="text-[10px] text-muted-foreground">{log.userEmail}</div>
                       </td>
                       <td className="p-3">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-primary/10 text-primary">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-primary/10 text-primary border border-primary/20">
                           {log.action}
                         </span>
                       </td>
-                      <td className="p-3 text-muted-foreground">
+                      <td className="p-3 text-muted-foreground break-words max-w-xs">
                         {log.details}
                       </td>
                     </tr>
@@ -226,6 +240,66 @@ export const UserActivitiesLog: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
+              <div className="text-xs text-muted-foreground px-2">
+                Showing <span className="font-medium text-foreground">{startIndex + 1}</span> to <span className="font-medium text-foreground">{Math.min(startIndex + itemsPerPage, filteredLogs.length)}</span> of <span className="font-medium text-foreground">{filteredLogs.length}</span> entries
+              </div>
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1 mx-1">
+                  {Array.from({ length: totalPages }).map((_, i) => {
+                    const pageNum = i + 1;
+                    // Show current, first, last, and some around current
+                    if (
+                      pageNum === 1 || 
+                      pageNum === totalPages || 
+                      (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                    ) {
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`h-8 w-8 p-0 text-xs ${currentPage === pageNum ? 'pointer-events-none' : ''}`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    } else if (
+                      pageNum === currentPage - 2 || 
+                      pageNum === currentPage + 2
+                    ) {
+                      return <span key={pageNum} className="px-1 text-muted-foreground">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
