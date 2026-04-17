@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save, RefreshCw, Activity } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, File as FilePdf, ChevronRight, AlertTriangle, Clock, User, CheckCircle2, XCircle, Send, Trash2, ShieldCheck, Save, RefreshCw, Activity, ChevronLeft } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -45,12 +45,26 @@ export const StudentReports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
+
+  // Main List Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+
+  // Detail List Pagination
+  const [detailCurrentPage, setDetailCurrentPage] = useState(1);
+  const [detailItemsPerPage] = useState(5);
+
   const studentAttempts = useMemo(() => {
     if (!selectedStudent) return [];
     return attempts
       .filter(a => a.studentId === selectedStudent.uid)
       .sort((a, b) => b.startTime - a.startTime);
   }, [attempts, selectedStudent]);
+
+  // Reset detail page when student changes
+  useEffect(() => {
+    setDetailCurrentPage(1);
+  }, [selectedStudent]);
   
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
@@ -68,13 +82,13 @@ export const StudentReports: React.FC = () => {
   const fetchData = useCallback(async (loadAttempts = false) => {
     setIsRefreshing(true);
     try {
-      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(100)));
+      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(500)));
       setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
 
       if (loadAttempts) {
         const [attemptsSnap, examsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'attempts'), limit(100), orderBy('startTime', 'desc'))),
-          getDocs(query(collection(db, 'exams'), limit(50)))
+          getDocs(query(collection(db, 'attempts'), limit(1000), orderBy('startTime', 'desc'))),
+          getDocs(query(collection(db, 'exams'), limit(100)))
         ]);
         setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
         setExams(examsSnap.docs.map(doc => doc.data() as Exam));
@@ -248,6 +262,30 @@ export const StudentReports: React.FC = () => {
     s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Main List Pagination logic
+  const mainTotalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const mainPaginatedStudents = filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= mainTotalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Detail List Pagination logic
+  const detailTotalPages = Math.ceil(studentAttempts.length / detailItemsPerPage);
+  const detailPaginatedAttempts = studentAttempts.slice((detailCurrentPage - 1) * detailItemsPerPage, detailCurrentPage * detailItemsPerPage);
+
+  const handleDetailPageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= detailTotalPages) {
+      setDetailCurrentPage(newPage);
+    }
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const exportToExcel = (data: any[], fileName: string) => {
     const ws = XLSX.utils.json_to_sheet(data);
@@ -457,13 +495,13 @@ export const StudentReports: React.FC = () => {
             <FileText className="w-5 h-5 text-primary" />
             Examination History
           </h3>
-          {studentAttempts.length === 0 ? (
+          {detailPaginatedAttempts.length === 0 ? (
             <div className="text-center py-12 border rounded-2xl border-dashed bg-muted/30">
               <p className="text-muted-foreground">No examination attempts found for this student.</p>
             </div>
           ) : (
             <div className="space-y-6">
-              {studentAttempts.map((attempt) => {
+              {detailPaginatedAttempts.map((attempt) => {
                 const exam = exams.find(e => e.id === attempt.examId);
                 const suspiciousCount = attempt.suspiciousActivity?.length || 0;
                 const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
@@ -613,6 +651,50 @@ export const StudentReports: React.FC = () => {
                   </Card>
                 );
               })}
+
+              {/* Detail Pagination Controls */}
+              {detailTotalPages > 1 && (
+                <div className="mt-6 flex items-center justify-between bg-muted/30 p-4 rounded-2xl border-2 border-dashed">
+                  <div className="text-sm text-muted-foreground font-medium">
+                    Showing <span className="text-foreground">{((detailCurrentPage - 1) * detailItemsPerPage) + 1}</span> to <span className="text-foreground">{Math.min(detailCurrentPage * detailItemsPerPage, studentAttempts.length)}</span> of <span className="text-foreground">{studentAttempts.length}</span> attempts
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleDetailPageChange(detailCurrentPage - 1)}
+                      disabled={detailCurrentPage === 1}
+                      className="px-4"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-2" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: detailTotalPages }).map((_, i) => (
+                        <Button
+                          key={i}
+                          variant={detailCurrentPage === i + 1 ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => handleDetailPageChange(i + 1)}
+                          className="w-8 h-8 p-0"
+                        >
+                          {i + 1}
+                        </Button>
+                      ))}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleDetailPageChange(detailCurrentPage + 1)}
+                      disabled={detailCurrentPage === detailTotalPages}
+                      className="px-4"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -838,14 +920,14 @@ export const StudentReports: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStudents.length === 0 ? (
+                {mainPaginatedStudents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       No students found matching your search.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredStudents.map((student) => {
+                  mainPaginatedStudents.map((student) => {
                     const stats = getStudentStats(student.uid);
                     return (
                       <TableRow key={student.uid} className="cursor-pointer hover:bg-muted/50 transition-colors">
@@ -923,6 +1005,65 @@ export const StudentReports: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination Controls */}
+          {mainTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
+              <div className="text-xs text-muted-foreground px-2">
+                Showing <span className="font-medium text-foreground">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-medium text-foreground">{Math.min(currentPage * itemsPerPage, filteredStudents.length)}</span> of <span className="font-medium text-foreground">{filteredStudents.length}</span> students
+              </div>
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1 mx-1">
+                  {Array.from({ length: mainTotalPages }).map((_, i) => {
+                    const pageNum = i + 1;
+                    if (
+                      pageNum === 1 || 
+                      pageNum === mainTotalPages || 
+                      (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                    ) {
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`h-8 w-8 p-0 text-xs ${currentPage === pageNum ? 'pointer-events-none' : ''}`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    } else if (
+                      pageNum === currentPage - 2 || 
+                      pageNum === currentPage + 2
+                    ) {
+                      return <span key={pageNum} className="px-0.5 text-muted-foreground">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === mainTotalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
