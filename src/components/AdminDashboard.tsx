@@ -50,7 +50,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const cached = sessionStorage.getItem('admin_stats');
       if (cached) {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 120000) { // 2 minutes cache
+        if (Date.now() - timestamp < 600000) { // 10 minutes cache
           setStats(data);
           setLoading(false);
           return;
@@ -195,7 +195,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     try {
       const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
       const snapshot = await getDocs(recentQuery);
-      const recentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
+      const recentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
       
       // Fetch names for these 5 attempts in batches
       const studentIds = Array.from(new Set(recentData.map(a => a.studentId)));

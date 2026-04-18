@@ -69,7 +69,7 @@ export const LiveMonitoring: React.FC = () => {
     if (isPaused) return;
 
     const attemptsUnsub = onSnapshot(query(collection(db, 'attempts'), where('status', '==', 'in-progress')), (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamAttempt));
+      const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
       setActiveAttempts(attemptsData);
       setLoading(false);
     });

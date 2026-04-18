@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, updateDoc, doc, deleteDoc, writeBatch, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, deleteDoc, writeBatch, query, orderBy, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,6 +33,9 @@ export const UserManagement: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [totalUsersCount, setTotalUsersCount] = useState(0);
+  const [firstDoc, setFirstDoc] = useState<any>(null);
+  const [lastDoc, setLastDoc] = useState<any>(null);
   
   // Selection state
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -43,21 +46,61 @@ export const UserManagement: React.FC = () => {
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
+  const fetchUsers = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setLoading(true);
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    try {
+      const usersCol = collection(db, 'users');
+      let q;
+
+      // Get count if on first page or refresh or search
+      if (direction === 'first' || !direction) {
+        const countSnap = await getCountFromServer(usersCol);
+        setTotalUsersCount(countSnap.data().count);
+      }
+
+      const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
+
+      if (searchTerm) {
+        // Fetch more for search and filter on client to avoid complex index requirements
+        // and because server-side search in firestore is limited to prefix
+        q = query(usersCol, ...baseConstraints); 
+      } else {
+        if (direction === 'next' && lastDoc) {
+          q = query(usersCol, ...baseConstraints, startAfter(lastDoc));
+        } else if (direction === 'prev' && firstDoc) {
+          q = query(usersCol, orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
+        } else {
+          q = query(usersCol, ...baseConstraints);
+        }
+      }
+
+      const snapshot = await getDocs(q);
       const usersData = snapshot.docs.map(doc => doc.data() as UserProfile);
+      
       setUsers(usersData);
+      setFirstDoc(snapshot.docs[0]);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      
+      if (!direction || direction === 'first') setCurrentPage(1);
+      else if (direction === 'next') setCurrentPage(prev => prev + 1);
+      else if (direction === 'prev') setCurrentPage(prev => prev - 1);
+
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    } finally {
       setLoading(false);
       setIsRefreshing(false);
-    }, (error) => {
-      console.error("Error listening to users:", error);
-      setLoading(false);
-      setIsRefreshing(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    }
+  }, [itemsPerPage, searchTerm, lastDoc, firstDoc]);
+
+  useEffect(() => {
+    fetchUsers('first');
+  }, [searchTerm]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchUsers('first');
+  };
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     try {
@@ -193,6 +236,16 @@ export const UserManagement: React.FC = () => {
           <p className="text-muted-foreground text-sm">Assign roles and manage user accounts across the system.</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
@@ -331,60 +384,44 @@ export const UserManagement: React.FC = () => {
           </div>
           
           {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="p-4 border-t flex items-center justify-between bg-muted/10">
-              <p className="text-xs text-muted-foreground">
-                Page {currentPage} of {totalPages}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                {Array.from({ length: totalPages }).map((_, i) => {
-                  const pageNum = i + 1;
-                  // Show current, first, last, and some around current
-                  if (
-                    pageNum === 1 || 
-                    pageNum === totalPages || 
-                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                  ) {
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={currentPage === pageNum ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => handlePageChange(pageNum)}
-                        className="h-8 w-8 p-0 text-xs"
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  } else if (
-                    pageNum === currentPage - 2 || 
-                    pageNum === currentPage + 2
-                  ) {
-                    return <span key={pageNum} className="px-1 text-muted-foreground">...</span>;
-                  }
-                  return null;
-                })}
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
+          <div className="p-4 border-t flex items-center justify-between bg-muted/10">
+            <p className="text-xs text-muted-foreground">
+              {searchTerm 
+                ? `Search results shown (limited)` 
+                : `Page ${currentPage} (approx ${totalUsersCount} total users)`
+              }
+            </p>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchUsers('first')}
+                disabled={currentPage === 1 || loading}
+                className="px-3"
+              >
+                First
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchUsers('prev')}
+                disabled={currentPage === 1 || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs font-medium px-2">Page {currentPage}</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchUsers('next')}
+                disabled={users.length < itemsPerPage || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 

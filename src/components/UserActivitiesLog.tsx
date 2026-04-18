@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, startAfter, endBefore, limitToLast, getCountFromServer, where } from 'firebase/firestore';
 import { UserActivityLog } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,53 +20,66 @@ export const UserActivitiesLog: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(15);
+  const [totalLogsCount, setTotalLogsCount] = useState(0);
+  const [firstDoc, setFirstDoc] = useState<any>(null);
+  const [lastDoc, setLastDoc] = useState<any>(null);
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'user_activities'), orderBy('timestamp', 'desc'), limit(1000));
+      const logsCol = collection(db, 'user_activities');
+      let q;
+
+      if (direction === 'first' || !direction) {
+        const countSnap = await getCountFromServer(logsCol);
+        setTotalLogsCount(countSnap.data().count);
+      }
+
+      const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];
+
+      if (searchTerm) {
+        // Limited search fetch
+        q = query(logsCol, ...baseConstraints); 
+      } else {
+        if (direction === 'next' && lastDoc) {
+          q = query(logsCol, ...baseConstraints, startAfter(lastDoc));
+        } else if (direction === 'prev' && firstDoc) {
+          q = query(logsCol, orderBy('timestamp', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
+        } else {
+          q = query(logsCol, ...baseConstraints);
+        }
+      }
+
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserActivityLog));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
+      
       setLogs(data);
       setFilteredLogs(data);
+      setFirstDoc(snapshot.docs[0]);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+
+      if (!direction || direction === 'first') setCurrentPage(1);
+      else if (direction === 'next') setCurrentPage(prev => prev + 1);
+      else if (direction === 'prev') setCurrentPage(prev => prev - 1);
+
     } catch (error) {
       console.error('Error fetching activity logs:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [itemsPerPage, searchTerm, lastDoc, firstDoc]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    fetchLogs('first');
+  }, [searchTerm]);
 
-  useEffect(() => {
-    const lower = searchTerm.toLowerCase();
-    const filtered = searchTerm ? logs.filter(log => 
-      log.userName.toLowerCase().includes(lower) ||
-      log.userEmail.toLowerCase().includes(lower) ||
-      log.action.toLowerCase().includes(lower) ||
-      log.details.toLowerCase().includes(lower)
-    ) : logs;
-    
-    setFilteredLogs(filtered);
-    setCurrentPage(1); // Reset to first page on search
-  }, [searchTerm, logs]);
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + itemsPerPage);
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
+  const handleRefresh = () => {
+    fetchLogs('first');
   };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedLogs(new Set(filteredLogs.map(l => l.id as string)));
+      setSelectedLogs(new Set(logs.map(l => l.id as string)));
     } else {
       setSelectedLogs(new Set());
     }
@@ -155,6 +168,9 @@ export const UserActivitiesLog: React.FC = () => {
           <p className="text-muted-foreground">Audit log of system usage and actions.</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2">
+            <Search className="w-4 h-4" /> Refresh
+          </Button>
           <Button variant="outline" size="sm" onClick={exportExcel} className="gap-2">
             <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel
           </Button>
@@ -192,7 +208,7 @@ export const UserActivitiesLog: React.FC = () => {
                   <th className="p-3 w-12 border-b">
                     <input 
                       type="checkbox" 
-                      checked={selectedLogs.size === filteredLogs.length && filteredLogs.length > 0}
+                      checked={selectedLogs.size === logs.length && logs.length > 0}
                       onChange={(e) => handleSelectAll(e.target.checked)}
                       className="rounded border-gray-300 cursor-pointer"
                     />
@@ -204,12 +220,12 @@ export const UserActivitiesLog: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedLogs.length === 0 ? (
+                {logs.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-muted-foreground">No logs found.</td>
                   </tr>
                 ) : (
-                  paginatedLogs.map(log => (
+                  logs.map(log => (
                     <tr key={log.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="p-3">
                         <input 
@@ -242,64 +258,44 @@ export const UserActivitiesLog: React.FC = () => {
           </div>
 
           {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
-              <div className="text-xs text-muted-foreground px-2">
-                Showing <span className="font-medium text-foreground">{startIndex + 1}</span> to <span className="font-medium text-foreground">{Math.min(startIndex + itemsPerPage, filteredLogs.length)}</span> of <span className="font-medium text-foreground">{filteredLogs.length}</span> entries
-              </div>
-              <div className="flex items-center gap-1">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                
-                <div className="flex items-center gap-1 mx-1">
-                  {Array.from({ length: totalPages }).map((_, i) => {
-                    const pageNum = i + 1;
-                    // Show current, first, last, and some around current
-                    if (
-                      pageNum === 1 || 
-                      pageNum === totalPages || 
-                      (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                    ) {
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => handlePageChange(pageNum)}
-                          className={`h-8 w-8 p-0 text-xs ${currentPage === pageNum ? 'pointer-events-none' : ''}`}
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    } else if (
-                      pageNum === currentPage - 2 || 
-                      pageNum === currentPage + 2
-                    ) {
-                      return <span key={pageNum} className="px-1 text-muted-foreground">...</span>;
-                    }
-                    return null;
-                  })}
-                </div>
-
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
+          <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
+            <div className="text-xs text-muted-foreground px-2">
+              {searchTerm 
+                ? `Search results shown (limited)` 
+                : `Page ${currentPage} (approx ${totalLogsCount} total entries)`
+              }
             </div>
-          )}
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchLogs('first')}
+                disabled={currentPage === 1 || loading}
+                className="px-3"
+              >
+                First
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchLogs('prev')}
+                disabled={currentPage === 1 || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs font-medium px-2">Page {currentPage}</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchLogs('next')}
+                disabled={logs.length < itemsPerPage || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

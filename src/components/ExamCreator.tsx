@@ -52,7 +52,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
       try {
         const q = query(collection(db, 'users'), where('role', '==', 'student'));
         const querySnapshot = await getDocs(q);
-        const studentsData = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+        const studentsData = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
         setStudents(studentsData);
       } catch (error) {
         console.error('Error fetching students:', error);

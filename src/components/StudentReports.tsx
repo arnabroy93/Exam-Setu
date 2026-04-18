@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy, startAfter, endBefore, limitToLast, getCountFromServer } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
@@ -49,6 +49,9 @@ export const StudentReports: React.FC = () => {
   // Main List Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [totalStudentsCount, setTotalStudentsCount] = useState(0);
+  const [firstDoc, setFirstDoc] = useState<any>(null);
+  const [lastDoc, setLastDoc] = useState<any>(null);
 
   // Detail List Pagination
   const [detailCurrentPage, setDetailCurrentPage] = useState(1);
@@ -79,19 +82,57 @@ export const StudentReports: React.FC = () => {
   const [isResettingAttempt, setIsResettingAttempt] = useState(false);
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
 
-  const fetchData = useCallback(async (loadAttempts = false) => {
+  const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setIsRefreshing(true);
     try {
-      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(500)));
-      setStudents(studentsSnap.docs.map(doc => doc.data() as UserProfile));
+      const studentsCol = collection(db, 'users');
+      let q;
 
-      if (loadAttempts) {
-        const [attemptsSnap, examsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'attempts'), limit(1000), orderBy('startTime', 'desc'))),
-          getDocs(query(collection(db, 'exams'), limit(100)))
-        ]);
+      if (direction === 'first' || !direction) {
+        const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
+        setTotalStudentsCount(countSnap.data().count);
+      }
+
+      const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
+
+      if (searchTerm) {
+        // Simple search fetch
+        q = query(studentsCol, ...baseConstraints);
+      } else {
+        if (direction === 'next' && lastDoc) {
+          q = query(studentsCol, ...baseConstraints, startAfter(lastDoc));
+        } else if (direction === 'prev' && firstDoc) {
+          q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
+        } else {
+          q = query(studentsCol, ...baseConstraints);
+        }
+      }
+
+      const studentsSnap = await getDocs(q);
+      const studentsData = studentsSnap.docs.map(doc => doc.data() as UserProfile);
+      setStudents(studentsData);
+      setFirstDoc(studentsSnap.docs[0]);
+      setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);
+
+      if (!direction || direction === 'first') setCurrentPage(1);
+      else if (direction === 'next') setCurrentPage(prev => prev + 1);
+      else if (direction === 'prev') setCurrentPage(prev => prev - 1);
+
+      // Now fetch only the attempts for these specific students to minimize reads
+      if (studentsData.length > 0) {
+        const studentIds = studentsData.map(s => s.uid);
+        const attemptsSnap = await getDocs(query(
+          collection(db, 'attempts'), 
+          where('studentId', 'in', studentIds),
+          limit(500) // Safety limit
+        ));
         setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
-        setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+
+        // Fetch all exams once if needed (usually fewer than students)
+        if (exams.length === 0) {
+          const examsSnap = await getDocs(query(collection(db, 'exams'), limit(100)));
+          setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+        }
         setHasLoadedReports(true);
       }
     } catch (error) {
@@ -100,11 +141,15 @@ export const StudentReports: React.FC = () => {
       setIsRefreshing(false);
       setLoading(false);
     }
-  }, []);
+  }, [itemsPerPage, searchTerm, lastDoc, firstDoc, exams.length]);
 
   useEffect(() => {
-    fetchData(false);
-  }, [fetchData]);
+    fetchData('first');
+  }, [searchTerm]);
+
+  const handleRefresh = () => {
+    fetchData('first');
+  };
 
   const handleResetAttempt = async () => {
     if (!attemptToReset) return;
@@ -115,7 +160,7 @@ export const StudentReports: React.FC = () => {
       if (selectedAttemptId === attemptToReset) {
         setSelectedAttemptId(null);
       }
-      fetchData(); // Refresh data after reset
+      fetchData('first'); // Refresh data after reset
     } catch (error) {
       console.error('Error resetting attempt:', error);
       alert('Failed to reset attempt.');
@@ -258,19 +303,14 @@ export const StudentReports: React.FC = () => {
     );
   };
 
-  const filteredStudents = students.filter(s => 
-    s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredStudents = students;
 
-  // Main List Pagination logic
-  const mainTotalPages = Math.ceil(filteredStudents.length / itemsPerPage);
-  const mainPaginatedStudents = filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Main List Pagination logic (already handled by fetchUsers in this optimized version)
+  const mainPaginatedStudents = students;
 
   const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= mainTotalPages) {
-      setCurrentPage(newPage);
-    }
+    if (newPage > currentPage) fetchData('next');
+    else if (newPage < currentPage) fetchData('prev');
   };
 
   // Detail List Pagination logic
@@ -832,22 +872,10 @@ export const StudentReports: React.FC = () => {
           <p className="text-muted-foreground">Monitor student performance and anti-cheating logs.</p>
         </div>
         <div className="flex items-center gap-2">
-          {!hasLoadedReports && (
-            <Button 
-              variant="default" 
-              size="sm" 
-              onClick={() => fetchData(true)} 
-              disabled={isRefreshing}
-              className="gap-2 bg-primary hover:bg-primary/90"
-            >
-              <Activity className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Load Detailed Reports
-            </Button>
-          )}
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => fetchData(hasLoadedReports)} 
+            onClick={() => fetchData('first')} 
             disabled={isRefreshing}
             className="gap-2 mr-2"
           >
@@ -1007,63 +1035,45 @@ export const StudentReports: React.FC = () => {
           </div>
 
           {/* Pagination Controls */}
-          {mainTotalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
-              <div className="text-xs text-muted-foreground px-2">
-                Showing <span className="font-medium text-foreground">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-medium text-foreground">{Math.min(currentPage * itemsPerPage, filteredStudents.length)}</span> of <span className="font-medium text-foreground">{filteredStudents.length}</span> students
-              </div>
-              <div className="flex items-center gap-1">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                
-                <div className="flex items-center gap-1 mx-1">
-                  {Array.from({ length: mainTotalPages }).map((_, i) => {
-                    const pageNum = i + 1;
-                    if (
-                      pageNum === 1 || 
-                      pageNum === mainTotalPages || 
-                      (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                    ) {
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => handlePageChange(pageNum)}
-                          className={`h-8 w-8 p-0 text-xs ${currentPage === pageNum ? 'pointer-events-none' : ''}`}
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    } else if (
-                      pageNum === currentPage - 2 || 
-                      pageNum === currentPage + 2
-                    ) {
-                      return <span key={pageNum} className="px-0.5 text-muted-foreground">...</span>;
-                    }
-                    return null;
-                  })}
-                </div>
-
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === mainTotalPages}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
+          <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
+            <div className="text-xs text-muted-foreground px-2">
+              {searchTerm 
+                ? `Showing matching students` 
+                : `Page ${currentPage} (approx ${totalStudentsCount} total students)`
+              }
             </div>
-          )}
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchData('first')}
+                disabled={currentPage === 1 || loading}
+              >
+                First
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchData('prev')}
+                disabled={currentPage === 1 || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              
+              <span className="text-xs font-medium px-2">Page {currentPage}</span>
+
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => fetchData('next')}
+                disabled={students.length < itemsPerPage || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
