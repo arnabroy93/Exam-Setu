@@ -115,6 +115,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         status: 'in-progress',
         suspiciousActivity: logs,
+        updatedAt: Date.now(),
       };
 
       try {

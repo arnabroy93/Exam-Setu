@@ -12,6 +12,7 @@ import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useDebounce } from '../hooks/useDebounce';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +28,7 @@ export const UserManagement: React.FC = () => {
   const { profile: currentUserProfile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
@@ -91,11 +93,11 @@ export const UserManagement: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [itemsPerPage, searchTerm, lastDoc, firstDoc]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]);
 
   useEffect(() => {
     fetchUsers('first');
-  }, [searchTerm]);
+  }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);

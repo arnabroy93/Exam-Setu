@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Download, FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useDebounce } from '../hooks/useDebounce';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -15,6 +16,7 @@ export const UserActivitiesLog: React.FC = () => {
   const [filteredLogs, setFilteredLogs] = useState<UserActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
   
   // Pagination state
@@ -67,11 +69,11 @@ export const UserActivitiesLog: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [itemsPerPage, searchTerm, lastDoc, firstDoc]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]);
 
   useEffect(() => {
     fetchLogs('first');
-  }, [searchTerm]);
+  }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
     fetchLogs('first');

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
+import { Clock, AlertTriangle, User, Users, BookOpen, Activity, ShieldAlert, CheckCircle2, RefreshCw, Trash2, Play } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
@@ -31,7 +31,7 @@ export const LiveMonitoring: React.FC = () => {
   const [allStudents, setAllStudents] = useState<Record<string, UserProfile>>({});
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
   const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -82,52 +82,76 @@ export const LiveMonitoring: React.FC = () => {
   // Fetch missing metadata when active attempts change
   useEffect(() => {
     const fetchMissingMetadata = async () => {
-      const missingStudentIds = Array.from(new Set(activeAttempts.map(a => a.studentId).filter(id => !allStudents[id])));
-      const missingExamIds = Array.from(new Set(activeAttempts.map(a => a.examId).filter(id => !allExams[id])));
+      // Check session storage first for metadata cache
+      const studentCache = JSON.parse(sessionStorage.getItem('user_metadata_cache') || '{}');
+      const examCache = JSON.parse(sessionStorage.getItem('exam_metadata_cache') || '{}');
+
+      const missingStudentIds = Array.from(new Set(activeAttempts.map(a => a.studentId).filter(id => !allStudents[id] && !studentCache[id])));
+      const missingExamIds = Array.from(new Set(activeAttempts.map(a => a.examId).filter(id => !allExams[id] && !examCache[id])));
+
+      // Merge cached data into current state first
+      let updatedStudents = { ...allStudents };
+      let updatedExams = { ...allExams };
+      let hasCachedUpdates = false;
+
+      activeAttempts.forEach(a => {
+        if (!updatedStudents[a.studentId] && studentCache[a.studentId]) {
+          updatedStudents[a.studentId] = studentCache[a.studentId];
+          hasCachedUpdates = true;
+        }
+        if (!updatedExams[a.examId] && examCache[a.examId]) {
+          updatedExams[a.examId] = examCache[a.examId];
+          hasCachedUpdates = true;
+        }
+      });
+
+      if (hasCachedUpdates) {
+        setAllStudents(updatedStudents);
+        setAllExams(updatedExams);
+      }
 
       if (missingStudentIds.length === 0 && missingExamIds.length === 0) return;
 
       try {
-        // Fetch students in batches of 30 (Firestore IN query limit)
-        const studentBatches = [];
+        const newStudentData: Record<string, UserProfile> = {};
+        const newExamData: Record<string, Exam> = {};
+
+        // Fetch students in batches of 30
         for (let i = 0; i < missingStudentIds.length; i += 30) {
-          const batch = missingStudentIds.slice(i, i + 30);
-          studentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+          const batchIds = missingStudentIds.slice(i, i + 30);
+          const snaps = await getDocs(query(collection(db, 'users'), where('__name__', 'in', batchIds)));
+          snaps.docs.forEach(d => {
+            const data = d.data() as UserProfile;
+            newStudentData[d.id] = data;
+            studentCache[d.id] = data;
+          });
         }
 
         // Fetch exams in batches of 30
-        const examBatches = [];
         for (let i = 0; i < missingExamIds.length; i += 30) {
-          const batch = missingExamIds.slice(i, i + 30);
-          examBatches.push(getDocs(query(collection(db, 'exams'), where('__name__', 'in', batch))));
+          const batchIds = missingExamIds.slice(i, i + 30);
+          const snaps = await getDocs(query(collection(db, 'exams'), where('__name__', 'in', batchIds)));
+          snaps.docs.forEach(d => {
+            const data = d.data() as Exam;
+            newExamData[d.id] = data;
+            examCache[d.id] = data;
+          });
         }
 
-        const [studentResults, examResults] = await Promise.all([
-          Promise.all(studentBatches),
-          Promise.all(examBatches)
-        ]);
-
-        setAllStudents(prev => {
-          const next = { ...prev };
-          studentResults.forEach(snap => {
-            snap.docs.forEach(d => { next[d.id] = d.data() as UserProfile; });
-          });
-          return next;
-        });
-
-        setAllExams(prev => {
-          const next = { ...prev };
-          examResults.forEach(snap => {
-            snap.docs.forEach(d => { next[d.id] = d.data() as Exam; });
-          });
-          return next;
-        });
+        if (Object.keys(newStudentData).length > 0 || Object.keys(newExamData).length > 0) {
+          setAllStudents(prev => ({ ...prev, ...newStudentData }));
+          setAllExams(prev => ({ ...prev, ...newExamData }));
+          sessionStorage.setItem('user_metadata_cache', JSON.stringify(studentCache));
+          sessionStorage.setItem('exam_metadata_cache', JSON.stringify(examCache));
+        }
       } catch (error) {
         console.error('Error fetching metadata:', error);
       }
     };
 
-    fetchMissingMetadata();
+    if (activeAttempts.length > 0) {
+      fetchMissingMetadata();
+    }
   }, [activeAttempts]);
 
   // Compute logs separately when state updates
@@ -193,8 +217,8 @@ export const LiveMonitoring: React.FC = () => {
           >
             {isPaused ? (
               <>
-                <Activity className="w-4 h-4" />
-                Resume Updates
+                <Play className="w-4 h-4" />
+                Start Monitoring
               </>
             ) : (
               <>
@@ -213,10 +237,12 @@ export const LiveMonitoring: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh Names
           </Button>
-          <Badge variant="outline" className="px-3 py-1 gap-2 bg-primary/5 border-primary/20">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            {activeAttempts.length} Active Students
-          </Badge>
+          {!isPaused && (
+            <Badge variant="outline" className="px-3 py-1 gap-2 bg-primary/5 border-primary/20">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              {activeAttempts.length} Active Students
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -231,7 +257,19 @@ export const LiveMonitoring: React.FC = () => {
             <CardDescription>Live progress of students currently taking exams</CardDescription>
           </CardHeader>
           <CardContent>
-            {activeAttempts.length === 0 ? (
+            {isPaused && activeAttempts.length === 0 ? (
+              <div className="text-center py-20 border-2 border-dashed rounded-2xl bg-muted/5">
+                <ShieldAlert className="w-16 h-12 text-muted-foreground/20 mx-auto mb-4" />
+                <h3 className="text-xl font-bold mb-2">Proctoring Inactive</h3>
+                <p className="text-muted-foreground max-w-md mx-auto mb-8">
+                  Monitoring is currently paused to save resources. Start the live engine to track student integrity and progress.
+                </p>
+                <Button onClick={() => setIsPaused(false)} size="lg" className="px-8 rounded-full shadow-lg shadow-primary/25">
+                  <Play className="w-5 h-5 mr-2" />
+                  Enable Live Proctoring
+                </Button>
+              </div>
+            ) : activeAttempts.length === 0 ? (
               <div className="text-center py-12 border rounded-xl border-dashed">
                 <BookOpen className="w-12 h-12 text-muted-foreground/20 mx-auto mb-4" />
                 <p className="text-muted-foreground">No active examinations at the moment.</p>

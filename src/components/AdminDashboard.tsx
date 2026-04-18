@@ -101,22 +101,42 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   };
 
   const fetchDetailData = async (statId: string) => {
+    // Check session cache for detail data
+    const cacheKey = `admin_detail_${statId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, students: cachedStudents, exams: cachedExams, timestamp } = JSON.parse(cached);
+      if (Date.now() - timestamp < 300000) { // 5 minutes cache for details
+        setAttempts(data);
+        setStudents(cachedStudents);
+        setExams(cachedExams);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
+      let detailAttempts: ExamAttempt[] = [];
+      let detailStudents: UserProfile[] = [];
+      let detailExams: Exam[] = [];
+
       switch (statId) {
         case 'active-exams':
         case 'inactive-exams':
         case 'total-exams':
           const examsSnap = await getDocs(query(collection(db, 'exams'), limit(50)));
-          setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+          detailExams = examsSnap.docs.map(doc => doc.data() as Exam);
+          setExams(detailExams);
           break;
         case 'total-attempts':
           const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded']), limit(50), orderBy('startTime', 'desc')));
-          setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
+          detailAttempts = attemptsSnap.docs.map(doc => doc.data() as any as ExamAttempt);
+          setAttempts(detailAttempts);
           
           // Fetch only necessary student and exam metadata for these 50 attempts in batches
-          const studentIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).studentId)));
-          const examIds = Array.from(new Set(attemptsSnap.docs.map(d => (d.data() as ExamAttempt).examId)));
+          const studentIds = Array.from(new Set(detailAttempts.map(a => a.studentId)));
+          const examIds = Array.from(new Set(detailAttempts.map(a => a.examId)));
           
           const studentBatches = [];
           for (let i = 0; i < studentIds.length; i += 30) {
@@ -135,27 +155,25 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
             Promise.all(examBatches)
           ]);
           
-          const allStudents: UserProfile[] = [];
-          studentSnaps.forEach(snap => snap.docs.forEach(d => allStudents.push(d.data() as UserProfile)));
-          
-          const allExams: Exam[] = [];
-          examSnaps.forEach(snap => snap.docs.forEach(d => allExams.push(d.data() as Exam)));
+          studentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push(d.data() as UserProfile)));
+          examSnaps.forEach(snap => snap.docs.forEach(d => detailExams.push(d.data() as Exam)));
 
-          setStudents(allStudents);
-          setExams(allExams);
+          setStudents(detailStudents);
+          setExams(detailExams);
           break;
         case 'total-students':
           const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
-          setStudents(studentsSnap2.docs.map(doc => doc.data() as UserProfile));
+          detailStudents = studentsSnap2.docs.map(doc => doc.data() as UserProfile);
+          setStudents(detailStudents);
           break;
         case 'total-examiners':
           const examinersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'examiner'), limit(50)));
-          setStudents(examinersSnap.docs.map(doc => doc.data() as UserProfile));
+          detailStudents = examinersSnap.docs.map(doc => doc.data() as UserProfile);
+          setStudents(detailStudents);
           break;
         case 'active-students':
-          // For active students, we fetch students with in-progress attempts
           const activeAttemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', '==', 'in-progress'), limit(50)));
-          const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as ExamAttempt).studentId)));
+          const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as any as ExamAttempt).studentId)));
           
           if (activeStudentIds.length > 0) {
             const activeStudentBatches = [];
@@ -164,14 +182,21 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
               activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
             }
             const activeStudentSnaps = await Promise.all(activeStudentBatches);
-            const activeStuds: UserProfile[] = [];
-            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => activeStuds.push(d.data() as UserProfile)));
-            setStudents(activeStuds);
+            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push(d.data() as UserProfile)));
+            setStudents(detailStudents);
           } else {
             setStudents([]);
           }
           break;
       }
+
+      // Cache the result
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        data: detailAttempts,
+        students: detailStudents,
+        exams: detailExams,
+        timestamp: Date.now()
+      }));
     } catch (error) {
       console.error('Error fetching detail data:', error);
     } finally {
@@ -185,7 +210,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const cached = sessionStorage.getItem('admin_recent_activity');
       if (cached) {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 120000) { // 2 minutes cache
+        if (Date.now() - timestamp < 600000) { // 10 minutes cache
           setRecentAttempts(data);
           return;
         }

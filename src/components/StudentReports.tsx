@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useDebounce } from '../hooks/useDebounce';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -42,6 +43,7 @@ export const StudentReports: React.FC = () => {
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
@@ -141,11 +143,11 @@ export const StudentReports: React.FC = () => {
       setIsRefreshing(false);
       setLoading(false);
     }
-  }, [itemsPerPage, searchTerm, lastDoc, firstDoc, exams.length]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, exams.length]);
 
   useEffect(() => {
     fetchData('first');
-  }, [searchTerm]);
+  }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
     fetchData('first');
