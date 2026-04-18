@@ -60,12 +60,11 @@ export const UserManagement: React.FC = () => {
         setTotalUsersCount(countSnap.data().count);
       }
 
-      const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
-
       if (debouncedSearchTerm) {
-        // Fetch more for search 
-        q = query(usersCol, ...baseConstraints); 
+        // Fetch a larger set for search to allow effective client-side filtering
+        q = query(usersCol, orderBy('createdAt', 'desc'), limit(100)); 
       } else {
+        const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
         if (direction === 'next' && lastDoc) {
           q = query(usersCol, ...baseConstraints, startAfter(lastDoc));
         } else if (direction === 'prev' && firstDoc) {
@@ -178,25 +177,16 @@ export const UserManagement: React.FC = () => {
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-    }
-  };
+  // If we are searching, we display all filtered results (from the 100 fetched)
+  // If we are NOT searching, we display the current page of paged users
+  const displayUsers = searchTerm ? filteredUsers : users;
 
   const toggleSelectAll = () => {
-    // Select all CURRENTLY VISIBLE filtered users (not just on current page, or maybe just on current page?)
-    // User said "bulk user" usually implies across the filtered list
-    if (selectedUserIds.length === filteredUsers.length) {
+    if (selectedUserIds.length === displayUsers.length) {
       setSelectedUserIds([]);
     } else {
       // Don't include self in selection for deletion
-      setSelectedUserIds(filteredUsers.filter(u => u.uid !== currentUserProfile?.uid).map(u => u.uid));
+      setSelectedUserIds(displayUsers.filter(u => u.uid !== currentUserProfile?.uid).map(u => u.uid));
     }
   };
 
@@ -281,7 +271,9 @@ export const UserManagement: React.FC = () => {
         <CardHeader className="pb-3 border-b bg-muted/20">
           <CardTitle className="text-lg">User Directory</CardTitle>
           <CardDescription>
-            Showing {Math.min(filteredUsers.length, itemsPerPage)} of {filteredUsers.length} total users
+            {searchTerm 
+              ? `Found ${displayUsers.length} matching users` 
+              : `Showing ${displayUsers.length} of approx ${totalUsersCount} users`}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -291,7 +283,7 @@ export const UserManagement: React.FC = () => {
                 <TableRow>
                   <TableHead className="w-[50px] px-4">
                     <Checkbox 
-                      checked={selectedUserIds.length > 0 && selectedUserIds.length === filteredUsers.filter(u => u.uid !== currentUserProfile?.uid).length}
+                      checked={selectedUserIds.length > 0 && selectedUserIds.length === displayUsers.filter(u => u.uid !== currentUserProfile?.uid).length}
                       onCheckedChange={toggleSelectAll}
                     />
                   </TableHead>
@@ -303,7 +295,7 @@ export const UserManagement: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedUsers.length === 0 ? (
+                {displayUsers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
@@ -313,7 +305,7 @@ export const UserManagement: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedUsers.map((user) => (
+                  displayUsers.map((user) => (
                     <tr key={user.uid} className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedUserIds.includes(user.uid) ? 'bg-primary/5' : ''}`}>
                       <TableCell className="px-4">
                         <Checkbox 
@@ -385,44 +377,43 @@ export const UserManagement: React.FC = () => {
           </div>
           
           {/* Pagination Controls */}
-          <div className="p-4 border-t flex items-center justify-between bg-muted/10">
-            <p className="text-xs text-muted-foreground">
-              {searchTerm 
-                ? `Search results shown (limited)` 
-                : `Page ${currentPage} (approx ${totalUsersCount} total users)`
-              }
-            </p>
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => fetchUsers('first')}
-                disabled={currentPage === 1 || loading}
-                className="px-3"
-              >
-                First
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => fetchUsers('prev')}
-                disabled={currentPage === 1 || loading}
-                className="h-8 w-8 p-0"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-xs font-medium px-2">Page {currentPage}</span>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => fetchUsers('next')}
-                disabled={users.length < itemsPerPage || loading}
-                className="h-8 w-8 p-0"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+          {!searchTerm && totalUsersCount > itemsPerPage && (
+            <div className="p-4 border-t flex items-center justify-between bg-muted/10">
+              <p className="text-xs text-muted-foreground">
+                Page {currentPage} of approx {Math.ceil(totalUsersCount / itemsPerPage)} (Total: {totalUsersCount})
+              </p>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => fetchUsers('first')}
+                  disabled={currentPage === 1 || loading}
+                  className="px-3"
+                >
+                  First
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => fetchUsers('prev')}
+                  disabled={currentPage === 1 || loading}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-xs font-medium px-2">Page {currentPage}</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => fetchUsers('next')}
+                  disabled={users.length < itemsPerPage || loading}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
