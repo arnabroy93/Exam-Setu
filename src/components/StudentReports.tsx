@@ -120,7 +120,17 @@ export const StudentReports: React.FC = () => {
       }
 
       const studentsSnap = await getDocs(q);
-      const studentsData = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+      let studentsData = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+      
+      // Client-side filter for search matches
+      if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.toLowerCase();
+        studentsData = studentsData.filter(s => 
+          s.displayName.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term)
+        );
+      }
+
       setStudents(studentsData);
       setFirstDoc(studentsSnap.docs[0]);
       setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);
@@ -130,18 +140,8 @@ export const StudentReports: React.FC = () => {
       else if (direction === 'prev') setCurrentPage(prev => prev - 1);
 
       // Now fetch only the attempts for these specific students to minimize reads
-      // We filter down to matching students first to save quota during search
-      let matchedStudents = studentsData;
-      if (debouncedSearchTerm) {
-        const term = debouncedSearchTerm.toLowerCase();
-        matchedStudents = studentsData.filter(s => 
-          s.displayName.toLowerCase().includes(term) ||
-          s.email.toLowerCase().includes(term)
-        );
-      }
-
-      if (matchedStudents.length > 0) {
-        const studentIds = matchedStudents.map(s => s.uid);
+      if (studentsData.length > 0) {
+        const studentIds = studentsData.map(s => s.uid);
         let allAttempts: ExamAttempt[] = [];
         
         // Chunk 'in' queries to respect Firestore's 30-item limit

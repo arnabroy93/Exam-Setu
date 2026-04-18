@@ -61,8 +61,17 @@ export const UserActivitiesLog: React.FC = () => {
       }
 
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
       
+      if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.toLowerCase();
+        data = data.filter(log => 
+          log.userName.toLowerCase().includes(term) ||
+          log.userEmail.toLowerCase().includes(term) ||
+          log.action.toLowerCase().includes(term)
+        );
+      }
+
       setLogs(data);
       setFilteredLogs(data);
       setFirstDoc(snapshot.docs[0]);
