@@ -48,8 +48,8 @@ export const UserActivitiesLog: React.FC = () => {
       const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];
 
       if (debouncedSearchTerm) {
-        // Limited search fetch
-        q = query(logsCol, ...baseConstraints); 
+        // Fetch up to 1000 logs when searching to bypass local page filters
+        q = query(logsCol, orderBy('timestamp', 'desc'), limit(1000)); 
       } else {
         if (direction === 'next' && lastDoc) {
           q = query(logsCol, ...baseConstraints, startAfter(lastDoc));

@@ -74,7 +74,7 @@ export const UserManagement: React.FC = () => {
 
       if (debouncedSearchTerm) {
         // Fetch a larger set for search to allow effective client-side filtering
-        q = query(usersCol, orderBy('createdAt', 'desc'), limit(100)); 
+        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000)); 
       } else {
         const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
         if (direction === 'next' && lastDoc) {

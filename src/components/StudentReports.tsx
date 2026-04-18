@@ -107,8 +107,8 @@ export const StudentReports: React.FC = () => {
       const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
 
       if (debouncedSearchTerm) {
-        // Simple search fetch
-        q = query(studentsCol, ...baseConstraints);
+        // Fetch a larger set for search to allow effective client-side filtering
+        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
       } else {
         if (direction === 'next' && lastDoc) {
           q = query(studentsCol, ...baseConstraints, startAfter(lastDoc));
@@ -130,14 +130,31 @@ export const StudentReports: React.FC = () => {
       else if (direction === 'prev') setCurrentPage(prev => prev - 1);
 
       // Now fetch only the attempts for these specific students to minimize reads
-      if (studentsData.length > 0) {
-        const studentIds = studentsData.map(s => s.uid);
-        const attemptsSnap = await getDocs(query(
-          collection(db, 'attempts'), 
-          where('studentId', 'in', studentIds),
-          limit(500) // Safety limit
-        ));
-        setAttempts(attemptsSnap.docs.map(doc => doc.data() as ExamAttempt));
+      // We filter down to matching students first to save quota during search
+      let matchedStudents = studentsData;
+      if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.toLowerCase();
+        matchedStudents = studentsData.filter(s => 
+          s.displayName.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term)
+        );
+      }
+
+      if (matchedStudents.length > 0) {
+        const studentIds = matchedStudents.map(s => s.uid);
+        let allAttempts: ExamAttempt[] = [];
+        
+        // Chunk 'in' queries to respect Firestore's 30-item limit
+        for (let i = 0; i < studentIds.length; i += 30) {
+          const batchIds = studentIds.slice(i, i + 30);
+          const attemptsSnap = await getDocs(query(
+            collection(db, 'attempts'), 
+            where('studentId', 'in', batchIds)
+          ));
+          allAttempts = [...allAttempts, ...attemptsSnap.docs.map(doc => doc.data() as ExamAttempt)];
+        }
+        
+        setAttempts(allAttempts);
 
         // Fetch all exams once if needed (usually fewer than students)
         if (exams.length === 0) {
