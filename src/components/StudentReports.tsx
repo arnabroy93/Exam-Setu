@@ -97,7 +97,7 @@ export const StudentReports: React.FC = () => {
 
       const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
 
-      if (searchTerm) {
+      if (debouncedSearchTerm) {
         // Simple search fetch
         q = query(studentsCol, ...baseConstraints);
       } else {
@@ -111,7 +111,7 @@ export const StudentReports: React.FC = () => {
       }
 
       const studentsSnap = await getDocs(q);
-      const studentsData = studentsSnap.docs.map(doc => doc.data() as UserProfile);
+      const studentsData = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       setStudents(studentsData);
       setFirstDoc(studentsSnap.docs[0]);
       setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);

@@ -62,9 +62,8 @@ export const UserManagement: React.FC = () => {
 
       const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
 
-      if (searchTerm) {
-        // Fetch more for search and filter on client to avoid complex index requirements
-        // and because server-side search in firestore is limited to prefix
+      if (debouncedSearchTerm) {
+        // Fetch more for search 
         q = query(usersCol, ...baseConstraints); 
       } else {
         if (direction === 'next' && lastDoc) {
@@ -77,7 +76,7 @@ export const UserManagement: React.FC = () => {
       }
 
       const snapshot = await getDocs(q);
-      const usersData = snapshot.docs.map(doc => doc.data() as UserProfile);
+      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       
       setUsers(usersData);
       setFirstDoc(snapshot.docs[0]);
@@ -93,7 +92,7 @@ export const UserManagement: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]); 
 
   useEffect(() => {
     fetchUsers('first');

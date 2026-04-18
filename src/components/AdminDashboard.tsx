@@ -131,7 +131,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           break;
         case 'total-attempts':
           const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded']), limit(50), orderBy('startTime', 'desc')));
-          detailAttempts = attemptsSnap.docs.map(doc => doc.data() as any as ExamAttempt);
+          detailAttempts = attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
           setAttempts(detailAttempts);
           
           // Fetch only necessary student and exam metadata for these 50 attempts in batches
@@ -155,20 +155,20 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
             Promise.all(examBatches)
           ]);
           
-          studentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push(d.data() as UserProfile)));
-          examSnaps.forEach(snap => snap.docs.forEach(d => detailExams.push(d.data() as Exam)));
+        studentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() } as UserProfile)));
+        examSnaps.forEach(snap => snap.docs.forEach(d => detailExams.push({ id: d.id, ...d.data() } as Exam)));
 
-          setStudents(detailStudents);
-          setExams(detailExams);
+        setStudents(detailStudents);
+        setExams(detailExams);
           break;
         case 'total-students':
           const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
-          detailStudents = studentsSnap2.docs.map(doc => doc.data() as UserProfile);
+          detailStudents = studentsSnap2.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
           setStudents(detailStudents);
           break;
         case 'total-examiners':
           const examinersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'examiner'), limit(50)));
-          detailStudents = examinersSnap.docs.map(doc => doc.data() as UserProfile);
+          detailStudents = examinersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
           setStudents(detailStudents);
           break;
         case 'active-students':
@@ -182,7 +182,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
               activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
             }
             const activeStudentSnaps = await Promise.all(activeStudentBatches);
-            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push(d.data() as UserProfile)));
+            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() as any } as UserProfile)));
             setStudents(detailStudents);
           } else {
             setStudents([]);

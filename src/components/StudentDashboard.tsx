@@ -42,7 +42,7 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         limit(12)
       );
       const examsSnapshot = await getDocs(examsQuery);
-      const examsData = examsSnapshot.docs.map(doc => doc.data() as Exam);
+      const examsData = examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
       setAvailableExams(examsData);
 
       // Fetch recent attempts
@@ -53,7 +53,7 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         limit(3)
       );
       const attemptsSnapshot = await getDocs(attemptsQuery);
-      const attemptsData = attemptsSnapshot.docs.map(doc => doc.data() as ExamAttempt);
+      const attemptsData = attemptsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
       
       // Fetch unique exam IDs for titles
       const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));

@@ -39,7 +39,7 @@ export const UserActivitiesLog: React.FC = () => {
 
       const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];
 
-      if (searchTerm) {
+      if (debouncedSearchTerm) {
         // Limited search fetch
         q = query(logsCol, ...baseConstraints); 
       } else {

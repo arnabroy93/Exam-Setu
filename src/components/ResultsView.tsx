@@ -27,7 +27,7 @@ export const ResultsView: React.FC = () => {
           orderBy('startTime', 'desc')
         );
         const snapshot = await getDocs(q);
-        const attemptsData = snapshot.docs.map(doc => doc.data() as ExamAttempt);
+        const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
         
         // Fetch all unique exam IDs needed
         const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));

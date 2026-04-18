@@ -40,7 +40,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
     try {
       const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'), limit(50));
       const snapshot = await getDocs(q);
-      const examsData = snapshot.docs.map(doc => doc.data() as Exam);
+      const examsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
       setExams(examsData);
     } catch (error) {
       console.error('Error fetching exams:', error);
