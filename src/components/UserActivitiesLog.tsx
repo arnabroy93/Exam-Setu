@@ -33,8 +33,16 @@ export const UserActivitiesLog: React.FC = () => {
       let q;
 
       if (direction === 'first' || !direction) {
-        const countSnap = await getCountFromServer(logsCol);
-        setTotalLogsCount(countSnap.data().count);
+        const cacheKey = 'total_logs_count';
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached && !loading) { // Using loading as refresh flag here or similar
+          setTotalLogsCount(Number(cached));
+        } else {
+          const countSnap = await getCountFromServer(logsCol);
+          const count = countSnap.data().count;
+          setTotalLogsCount(count);
+          sessionStorage.setItem(cacheKey, count.toString());
+        }
       }
 
       const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, getDocs, getCountFromServer, doc, deleteDoc, orderBy, limit, getDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile } from '../types';
+import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw } from 'lucide-react';
@@ -222,24 +223,14 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const snapshot = await getDocs(recentQuery);
       const recentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
       
-      // Fetch names for these 5 attempts in batches
-      const studentIds = Array.from(new Set(recentData.map(a => a.studentId)));
-      const examIds = Array.from(new Set(recentData.map(a => a.examId)));
-
-      const [studentSnaps, examSnaps] = await Promise.all([
-        studentIds.length > 0 ? getDocs(query(collection(db, 'users'), where('__name__', 'in', studentIds))) : Promise.resolve({ docs: [] }),
-        examIds.length > 0 ? getDocs(query(collection(db, 'exams'), where('__name__', 'in', examIds))) : Promise.resolve({ docs: [] })
-      ]);
-
-      const studentMap: Record<string, string> = {};
-      const examMap: Record<string, string> = {};
-      studentSnaps.docs.forEach(d => { studentMap[d.id] = (d.data() as UserProfile).displayName; });
-      examSnaps.docs.forEach(d => { examMap[d.id] = (d.data() as Exam).title; });
-
-      const enriched = recentData.map(attempt => ({
-        ...attempt,
-        studentName: studentMap[attempt.studentId] || 'Unknown Student',
-        examTitle: examMap[attempt.examId] || 'Unknown Exam'
+      const enriched = await Promise.all(recentData.map(async (attempt) => {
+        const student = await metadataCache.getUser(attempt.studentId);
+        const exam = await metadataCache.getExam(attempt.examId);
+        return {
+          ...attempt,
+          studentName: student?.displayName || 'Unknown Student',
+          examTitle: exam?.title || 'Unknown Exam'
+        };
       }));
 
       setRecentAttempts(enriched);

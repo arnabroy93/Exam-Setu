@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy, startAfter, endBefore, limitToLast, getCountFromServer } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
+import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
@@ -91,8 +92,16 @@ export const StudentReports: React.FC = () => {
       let q;
 
       if (direction === 'first' || !direction) {
-        const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
-        setTotalStudentsCount(countSnap.data().count);
+        const cacheKey = 'total_students_count';
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached && !isRefreshing) {
+          setTotalStudentsCount(Number(cached));
+        } else {
+          const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
+          const count = countSnap.data().count;
+          setTotalStudentsCount(count);
+          sessionStorage.setItem(cacheKey, count.toString());
+        }
       }
 
       const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
@@ -132,8 +141,8 @@ export const StudentReports: React.FC = () => {
 
         // Fetch all exams once if needed (usually fewer than students)
         if (exams.length === 0) {
-          const examsSnap = await getDocs(query(collection(db, 'exams'), limit(100)));
-          setExams(examsSnap.docs.map(doc => doc.data() as Exam));
+          const examsData = await metadataCache.getExamsList();
+          setExams(examsData);
         }
         setHasLoadedReports(true);
       }

@@ -56,8 +56,16 @@ export const UserManagement: React.FC = () => {
 
       // Get count if on first page or refresh or search
       if (direction === 'first' || !direction) {
-        const countSnap = await getCountFromServer(usersCol);
-        setTotalUsersCount(countSnap.data().count);
+        const cacheKey = 'total_users_count';
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached && !isRefreshing) {
+          setTotalUsersCount(Number(cached));
+        } else {
+          const countSnap = await getCountFromServer(usersCol);
+          const count = countSnap.data().count;
+          setTotalUsersCount(count);
+          sessionStorage.setItem(cacheKey, count.toString());
+        }
       }
 
       if (debouncedSearchTerm) {

@@ -3,6 +3,7 @@ import { useAuth } from '../lib/AuthContext';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, limit, orderBy, getDoc, doc } from 'firebase/firestore';
 import { Exam, ExamAttempt } from '../types';
+import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,35 +56,16 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       const attemptsSnapshot = await getDocs(attemptsQuery);
       const attemptsData = attemptsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
       
-      // Fetch unique exam IDs for titles
-      const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
-      const examMap: Record<string, string> = {};
-
-      // First check if we already have the exam in availableExams
-      examIds.forEach(id => {
-        const found = examsData.find(e => e.id === id);
-        if (found) examMap[id] = found.title;
-      });
-
-      // Fetch missing titles only
-      const missingIds = examIds.filter(id => !examMap[id]);
-      if (missingIds.length > 0) {
-        await Promise.all(missingIds.map(async (id) => {
-          try {
-            const examDoc = await getDoc(doc(db, 'exams', id));
-            examMap[id] = examDoc.exists() ? (examDoc.data() as Exam).title : 'Unknown Exam';
-          } catch (error) {
-            console.error('Error fetching exam title:', error);
-            examMap[id] = 'Unknown Exam';
-          }
-        }));
-      }
-
-      const enrichedAttempts = attemptsData.map(attempt => ({
-        ...attempt,
-        examTitle: examMap[attempt.examId]
+      // Enrich attempts with exam titles using the cache
+      const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
+        const exam = await metadataCache.getExam(attempt.examId);
+        return {
+          ...attempt,
+          examTitle: exam?.title || 'Unknown Exam'
+        };
       }));
 
+      setAvailableExams(examsData);
       setRecentAttempts(enrichedAttempts);
       
       // Cache data

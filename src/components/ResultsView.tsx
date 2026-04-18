@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, getDoc, doc, limit, orderBy } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
+import { metadataCache } from '../lib/metadataCache';
 import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,36 +33,9 @@ export const ResultsView: React.FC = () => {
         // Fetch all unique exam IDs needed
         const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
         
-        // Fetch exam details for each attempt efficiently using a local cache
-        const examMap: Record<string, Exam> = {};
-        
-        // Check session storage first
-        const cachedExams = JSON.parse(sessionStorage.getItem('exam_metadata_cache') || '{}');
-        
-        await Promise.all(examIds.map(async (id) => {
-          if (cachedExams[id]) {
-            examMap[id] = cachedExams[id];
-            return;
-          }
-          
-          try {
-            const examDoc = await getDoc(doc(db, 'exams', id));
-            if (examDoc.exists()) {
-              const examData = examDoc.data() as Exam;
-              examMap[id] = examData;
-              cachedExams[id] = examData;
-            }
-          } catch (error) {
-            console.error('Error fetching exam:', id, error);
-          }
-        }));
-        
-        // Update cache
-        sessionStorage.setItem('exam_metadata_cache', JSON.stringify(cachedExams));
-
-        const enrichedAttempts = attemptsData.map(attempt => ({
-          ...attempt,
-          exam: examMap[attempt.examId]
+        const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
+          const exam = await metadataCache.getExam(attempt.examId);
+          return { ...attempt, exam: exam || undefined };
         }));
         
         setAttempts(enrichedAttempts);
