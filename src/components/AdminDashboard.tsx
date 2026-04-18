@@ -32,7 +32,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     activeExams: 0,
     inactiveExams: 0,
     totalExaminers: 0,
-    activeStudents: 0
+    activeStudents: 0,
+    totalUsers: 0
   });
   const [exams, setExams] = useState<Exam[]>([]);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
@@ -71,14 +72,16 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         submittedAttemptsCount,
         totalStudentsCount,
         totalExaminersCount,
-        activeStudentsCount
+        activeStudentsCount,
+        totalUsersCount
       ] = await Promise.all([
         getCountFromServer(examsCol),
         getCountFromServer(query(examsCol, where('status', '==', 'published'))),
         getCountFromServer(query(attemptsCol, where('status', 'in', ['submitted', 'graded']))),
         getCountFromServer(query(studentsCol, where('role', '==', 'student'))),
         getCountFromServer(query(studentsCol, where('role', '==', 'examiner'))),
-        getCountFromServer(query(attemptsCol, where('status', '==', 'in-progress')))
+        getCountFromServer(query(attemptsCol, where('status', '==', 'in-progress'))),
+        getCountFromServer(studentsCol)
       ]);
 
       const newStats = {
@@ -88,7 +91,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         submittedAttempts: submittedAttemptsCount.data().count,
         totalStudents: totalStudentsCount.data().count,
         totalExaminers: totalExaminersCount.data().count,
-        activeStudents: activeStudentsCount.data().count
+        activeStudents: activeStudentsCount.data().count,
+        totalUsers: totalUsersCount.data().count
       };
 
       setStats(newStats);
@@ -173,20 +177,28 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           setStudents(detailStudents);
           break;
         case 'active-students':
-          const activeAttemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', '==', 'in-progress'), limit(50)));
-          const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as any as ExamAttempt).studentId)));
-          
-          if (activeStudentIds.length > 0) {
-            const activeStudentBatches = [];
-            for (let i = 0; i < activeStudentIds.length; i += 30) {
-              const batch = activeStudentIds.slice(i, i + 30);
-              activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
-            }
-            const activeStudentSnaps = await Promise.all(activeStudentBatches);
-            activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() as any } as UserProfile)));
+        case 'total-users':
+          const usersQuery = statId === 'total-users' ? query(collection(db, 'users'), limit(100)) : query(collection(db, 'attempts'), where('status', '==', 'in-progress'), limit(50));
+          if (statId === 'total-users') {
+            const usersSnap = await getDocs(usersQuery);
+            detailStudents = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() as any } as UserProfile));
             setStudents(detailStudents);
           } else {
-            setStudents([]);
+            const activeAttemptsSnap = await getDocs(usersQuery);
+            const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as any as ExamAttempt).studentId)));
+            
+            if (activeStudentIds.length > 0) {
+              const activeStudentBatches = [];
+              for (let i = 0; i < activeStudentIds.length; i += 30) {
+                const batch = activeStudentIds.slice(i, i + 30);
+                activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+              }
+              const activeStudentSnaps = await Promise.all(activeStudentBatches);
+              activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() as any } as UserProfile)));
+              setStudents(detailStudents);
+            } else {
+              setStudents([]);
+            }
           }
           break;
       }
@@ -277,10 +289,11 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     { id: 'inactive-exams', title: 'Inactive Exams', value: stats.inactiveExams, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-500/10', desc: 'Drafts & Archived' },
     { id: 'total-attempts', title: 'Submitted Attempts', value: stats.submittedAttempts, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Exams completed' },
     { id: 'total-students', title: 'Total Students', value: stats.totalStudents, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Registered students' },
-    { id: 'active-students', title: 'Active Students', value: stats.activeStudents, icon: CheckCircle2, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Taking exams now' },
+    { id: 'active-students', title: 'Total Active Users', value: stats.activeStudents, icon: Activity, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Users currently active' },
+    { id: 'total-users', title: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-cyan-500', bg: 'bg-cyan-500/10', desc: 'All registered accounts' },
     { id: 'total-examiners', title: 'Total Examiners', value: stats.totalExaminers, icon: Users, color: 'text-pink-500', bg: 'bg-pink-500/10', desc: 'Registered examiners' },
     { id: 'total-exams', title: 'Exams Created', value: stats.totalExams, icon: FileText, color: 'text-orange-500', bg: 'bg-orange-500/10', desc: 'All created exams' },
-  ];
+  ].sort((a, b) => a.title.localeCompare(b.title));
 
   const getDetailContent = () => {
     switch (selectedStat) {
@@ -397,8 +410,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         };
       case 'active-students':
         return {
-          title: 'Active Students',
-          description: 'Students currently taking exams (in-progress).',
+          title: 'Total Active Users',
+          description: 'Users currently performing activities (e.g., taking exams).',
           data: students.filter(s => s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || s.email.toLowerCase().includes(searchTerm.toLowerCase())),
           columns: ['Name', 'Email', 'Joined', 'Status'],
           renderRow: (student: UserProfile) => (
@@ -407,8 +420,25 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
               <TableCell>{student.email}</TableCell>
               <TableCell>{new Date(student.createdAt).toLocaleDateString()}</TableCell>
               <TableCell>
-                <Badge variant="default" className="bg-indigo-500 hover:bg-indigo-600">In Progress</Badge>
+                <Badge variant="default" className="bg-indigo-500 hover:bg-indigo-600">Active</Badge>
               </TableCell>
+            </TableRow>
+          )
+        };
+      case 'total-users':
+        return {
+          title: 'Total Users',
+          description: 'All users registered in the system across all roles.',
+          data: students.filter(s => s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || s.email.toLowerCase().includes(searchTerm.toLowerCase())),
+          columns: ['Name', 'Email', 'Role', 'Joined'],
+          renderRow: (user: UserProfile) => (
+            <TableRow key={user.uid}>
+              <TableCell className="font-medium">{user.displayName}</TableCell>
+              <TableCell>{user.email}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className="capitalize">{user.role}</Badge>
+              </TableCell>
+              <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
             </TableRow>
           )
         };
