@@ -26,7 +26,7 @@ export const LiveMonitoring: React.FC = () => {
   const { profile } = useAuth();
   const [activeAttempts, setActiveAttempts] = useState<(ExamAttempt & { student?: UserProfile, exam?: Exam })[]>([]);
   const [recentLogs, setRecentLogs] = useState<{ log: ActivityLog, studentName: string, examTitle: string, attemptId: string }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const [allStudents, setAllStudents] = useState<Record<string, UserProfile>>({});
   const [allExams, setAllExams] = useState<Record<string, Exam>>({});
