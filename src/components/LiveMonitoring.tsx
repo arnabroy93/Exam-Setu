@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, where, orderBy, getDocs, getDoc, doc, deleteDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
+import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -81,78 +82,31 @@ export const LiveMonitoring: React.FC = () => {
 
   // Fetch missing metadata when active attempts change
   useEffect(() => {
-    const fetchMissingMetadata = async () => {
-      // Check session storage first for metadata cache
-      const studentCache = JSON.parse(sessionStorage.getItem('user_metadata_cache') || '{}');
-      const examCache = JSON.parse(sessionStorage.getItem('exam_metadata_cache') || '{}');
+    const fetchMetadata = async () => {
+      if (activeAttempts.length === 0) return;
 
-      const missingStudentIds = Array.from(new Set(activeAttempts.map(a => a.studentId).filter(id => !allStudents[id] && !studentCache[id])));
-      const missingExamIds = Array.from(new Set(activeAttempts.map(a => a.examId).filter(id => !allExams[id] && !examCache[id])));
+      const studentIds = Array.from(new Set(activeAttempts.map(a => a.studentId))) as string[];
+      const examIds = Array.from(new Set(activeAttempts.map(a => a.examId))) as string[];
 
-      // Merge cached data into current state first
-      let updatedStudents = { ...allStudents };
-      let updatedExams = { ...allExams };
-      let hasCachedUpdates = false;
+      const [studentsData, examsData] = await Promise.all([
+        Promise.all(studentIds.map(id => metadataCache.getUser(id))),
+        Promise.all(examIds.map(id => metadataCache.getExam(id)))
+      ]);
 
-      activeAttempts.forEach(a => {
-        if (!updatedStudents[a.studentId] && studentCache[a.studentId]) {
-          updatedStudents[a.studentId] = studentCache[a.studentId];
-          hasCachedUpdates = true;
-        }
-        if (!updatedExams[a.examId] && examCache[a.examId]) {
-          updatedExams[a.examId] = examCache[a.examId];
-          hasCachedUpdates = true;
-        }
-      });
+      const studentMap: Record<string, UserProfile> = {};
+      const examMap: Record<string, Exam> = {};
 
-      if (hasCachedUpdates) {
-        setAllStudents(updatedStudents);
-        setAllExams(updatedExams);
-      }
+      studentsData.forEach(s => { if (s) studentMap[s.uid] = s; });
+      examsData.forEach(e => { if (e) examMap[e.id] = e; });
 
-      if (missingStudentIds.length === 0 && missingExamIds.length === 0) return;
-
-      try {
-        const newStudentData: Record<string, UserProfile> = {};
-        const newExamData: Record<string, Exam> = {};
-
-        // Fetch students in batches of 30
-        for (let i = 0; i < missingStudentIds.length; i += 30) {
-          const batchIds = missingStudentIds.slice(i, i + 30);
-          const snaps = await getDocs(query(collection(db, 'users'), where('__name__', 'in', batchIds)));
-          snaps.docs.forEach(d => {
-            const data = d.data() as UserProfile;
-            newStudentData[d.id] = data;
-            studentCache[d.id] = data;
-          });
-        }
-
-        // Fetch exams in batches of 30
-        for (let i = 0; i < missingExamIds.length; i += 30) {
-          const batchIds = missingExamIds.slice(i, i + 30);
-          const snaps = await getDocs(query(collection(db, 'exams'), where('__name__', 'in', batchIds)));
-          snaps.docs.forEach(d => {
-            const data = d.data() as Exam;
-            newExamData[d.id] = data;
-            examCache[d.id] = data;
-          });
-        }
-
-        if (Object.keys(newStudentData).length > 0 || Object.keys(newExamData).length > 0) {
-          setAllStudents(prev => ({ ...prev, ...newStudentData }));
-          setAllExams(prev => ({ ...prev, ...newExamData }));
-          sessionStorage.setItem('user_metadata_cache', JSON.stringify(studentCache));
-          sessionStorage.setItem('exam_metadata_cache', JSON.stringify(examCache));
-        }
-      } catch (error) {
-        console.error('Error fetching metadata:', error);
-      }
+      setAllStudents(prev => ({ ...prev, ...studentMap }));
+      setAllExams(prev => ({ ...prev, ...examMap }));
     };
 
-    if (activeAttempts.length > 0) {
-      fetchMissingMetadata();
+    if (!isPaused && activeAttempts.length > 0) {
+      fetchMetadata();
     }
-  }, [activeAttempts]);
+  }, [activeAttempts, isPaused]);
 
   // Compute logs separately when state updates
   useEffect(() => {

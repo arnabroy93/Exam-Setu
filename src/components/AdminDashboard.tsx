@@ -52,7 +52,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const cached = sessionStorage.getItem('admin_stats');
       if (cached) {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 600000) { // 10 minutes cache
+        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
           setStats(data);
           setLoading(false);
           return;
@@ -223,7 +223,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const cached = sessionStorage.getItem('admin_recent_activity');
       if (cached) {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 600000) { // 10 minutes cache
+        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
           setRecentAttempts(data);
           return;
         }

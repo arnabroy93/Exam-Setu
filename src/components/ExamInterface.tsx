@@ -45,6 +45,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [lastLog, setLastLog] = useState<ActivityLog | null>(null);
+  const lastSyncRef = React.useRef<{ answers: Record<string, any>, logsCount: number }>({ answers: {}, logsCount: 0 });
 
   useEffect(() => {
     if (!exam.settings?.restrictAttempts || !profile) {
@@ -107,6 +108,14 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         }
       });
 
+      // Check if anything actually changed since last sync
+      const hasAnswersChanged = JSON.stringify(sanitizedAnswers) !== JSON.stringify(lastSyncRef.current.answers);
+      const hasLogsChanged = logs.length !== lastSyncRef.current.logsCount;
+
+      if (!hasAnswersChanged && !hasLogsChanged && lastSyncRef.current.logsCount > 0) {
+        return; // Skip sync if nothing changed
+      }
+
       const attempt: any = {
         id: attemptId,
         examId: exam.id,
@@ -122,6 +131,12 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         // Remove any undefined values that might crash Firestore
         const cleanAttempt = JSON.parse(JSON.stringify(attempt));
         await setDoc(doc(db, 'attempts', attemptId), cleanAttempt);
+        
+        // Update sync ref
+        lastSyncRef.current = {
+          answers: sanitizedAnswers,
+          logsCount: logs.length
+        };
       } catch (error) {
         console.error('Error syncing attempt:', error);
       }

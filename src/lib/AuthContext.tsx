@@ -24,6 +24,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        // Try localStorage first to set profile immediately and skip a read if it matches
+        const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setProfile(parsed);
+            setLoading(false); // Set loading false early if we have a cache
+          } catch (e) {}
+        }
+
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {

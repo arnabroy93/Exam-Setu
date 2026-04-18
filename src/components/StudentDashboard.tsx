@@ -26,7 +26,7 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       const cached = sessionStorage.getItem(`student_dashboard_${profile.uid}`);
       if (cached) {
         const { availableExams, recentAttempts, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 600000) { // 10 minutes cache
+        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
           setAvailableExams(availableExams);
           setRecentAttempts(recentAttempts);
           setLoading(false);
