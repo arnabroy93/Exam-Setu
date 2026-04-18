@@ -5,7 +5,7 @@ import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw, Trash2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw, Trash2, ChevronLeft, ChevronRight, AlertTriangle, FileSpreadsheet, FileText, File as FilePdf, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../lib/AuthContext';
@@ -13,6 +13,9 @@ import { logUserActivity } from '../lib/activityLogger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '../hooks/useDebounce';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +50,7 @@ export const UserManagement: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const fetchUsers = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setLoading(true);
@@ -185,6 +189,76 @@ export const UserManagement: React.FC = () => {
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getExportData = async () => {
+    setIsExporting(true);
+    try {
+      const usersCol = collection(db, 'users');
+      const q = query(usersCol, orderBy('createdAt', 'desc'), limit(5000));
+      const snapshot = await getDocs(q);
+      let allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+
+      if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.toLowerCase();
+        allUsers = allUsers.filter(u => 
+          u.displayName.toLowerCase().includes(term) ||
+          u.email.toLowerCase().includes(term)
+        );
+      }
+
+      if (selectedUserIds.length > 0) {
+        allUsers = allUsers.filter(u => selectedUserIds.includes(u.uid));
+      }
+
+      return allUsers.map(user => ({
+        'Name': user.displayName,
+        'Email': user.email,
+        'Role': user.role.charAt(0).toUpperCase() + user.role.slice(1),
+        'Joined Date': new Date(user.createdAt).toLocaleDateString()
+      }));
+    } catch (error) {
+      console.error('Error fetching export data:', error);
+      return [];
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExport = async (format: 'excel' | 'csv' | 'pdf') => {
+    const data = await getExportData();
+    if (data.length === 0) return;
+
+    const fileName = `User_Management_${new Date().toISOString()}`;
+
+    if (format === 'excel') {
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Users");
+      XLSX.writeFile(wb, `${fileName}.xlsx`);
+    } else if (format === 'csv') {
+      const ws = XLSX.utils.json_to_sheet(data);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.setAttribute('download', `${fileName}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (format === 'pdf') {
+      const doc = new jsPDF();
+      doc.text('User Management Export', 14, 15);
+      const headers = Object.keys(data[0]);
+      const body = data.map(row => Object.values(row));
+      autoTable(doc, {
+        head: [headers],
+        body: body,
+        startY: 20,
+      });
+      doc.save(`${fileName}.pdf`);
+    }
+  };
+
   // If we are searching, we display all filtered results (from the 100 fetched)
   // If we are NOT searching, we display the current page of paged users
   const displayUsers = searchTerm ? filteredUsers : users;
@@ -277,12 +351,30 @@ export const UserManagement: React.FC = () => {
 
       <Card className="border-2 border-primary/5 shadow-sm">
         <CardHeader className="pb-3 border-b bg-muted/20">
-          <CardTitle className="text-lg">User Directory</CardTitle>
-          <CardDescription>
-            {searchTerm 
-              ? `Found ${displayUsers.length} matching users` 
-              : `Showing ${displayUsers.length} of approx ${totalUsersCount} users`}
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg">User Directory</CardTitle>
+              <CardDescription>
+                {searchTerm 
+                  ? `Found ${displayUsers.length} matching users` 
+                  : `Showing ${displayUsers.length} of approx ${totalUsersCount} users`}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleExport('excel')} disabled={isExporting}>
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleExport('csv')} disabled={isExporting}>
+                <FileText className="w-4 h-4 mr-2" />
+                CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} disabled={isExporting}>
+                <FilePdf className="w-4 h-4 mr-2" />
+                PDF
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">

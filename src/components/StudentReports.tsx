@@ -372,18 +372,90 @@ export const StudentReports: React.FC = () => {
     doc.save(`${fileName}.pdf`);
   };
 
-  const handleExportAll = (format: 'excel' | 'csv' | 'pdf') => {
-    const data = filteredStudents.map(s => {
-      const stats = getStudentStats(s.uid);
-      return {
-        'Student Name': s.displayName,
-        'Email': s.email,
-        'Exams Taken': stats.attemptsCount,
-        'Total Marks Obtained': stats.totalScore,
-        'Full Marks': stats.totalFullMarks,
-        'Overall Percentage': `${stats.percentage.toFixed(2)}%`
-      };
-    });
+  const [isExporting, setIsExporting] = useState(false);
+
+  const getExportData = async () => {
+    setIsExporting(true);
+    try {
+      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(5000)));
+      let exportStudents = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        exportStudents = exportStudents.filter(s =>
+          s.displayName.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term)
+        );
+      }
+
+      let exportAttempts: ExamAttempt[] = [];
+      const studentIds = exportStudents.map(s => s.uid);
+      
+      if (studentIds.length > 0) {
+        for(let i=0; i<studentIds.length; i+=30) {
+           const batchIds = studentIds.slice(i, i+30);
+           const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
+           exportAttempts = [...exportAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+        }
+      }
+
+      let currentExams = exams;
+      if (currentExams.length === 0) {
+        currentExams = await metadataCache.getExamsList();
+      }
+
+      const calculatedData = exportStudents.map(s => {
+        const studentAttempts = exportAttempts.filter(a => a.studentId === s.uid && (a.status === 'submitted' || a.status === 'graded'));
+        const attemptsByExam: Record<string, ExamAttempt> = {};
+        
+        studentAttempts.forEach(attempt => {
+          const exam = currentExams.find(e => e.id === attempt.examId);
+          if (!exam) return;
+          const currentBest = attemptsByExam[attempt.examId];
+          const attemptScore = calculateTotalObtained(attempt, exam);
+          const currentBestScore = currentBest ? calculateTotalObtained(currentBest, currentExams.find(e => e.id === currentBest.examId)) : -1;
+          
+          if (!currentBest || attemptScore > currentBestScore) {
+            attemptsByExam[attempt.examId] = attempt;
+          }
+        });
+
+        let totalScore = 0;
+        let totalFullMarks = 0;
+
+        Object.values(attemptsByExam).forEach(attempt => {
+          const exam = currentExams.find(e => e.id === attempt.examId);
+          if (exam) {
+            const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
+            totalFullMarks += examFullMarks;
+            totalScore += calculateTotalObtained(attempt, exam);
+          }
+        });
+
+        const percentage = totalFullMarks > 0 ? (totalScore / totalFullMarks) * 100 : 0;
+
+        return {
+          'Student Name': s.displayName,
+          'Email': s.email,
+          'Exams Taken': studentAttempts.length,
+          'Total Marks Obtained': totalScore,
+          'Full Marks': totalFullMarks,
+          'Overall Percentage': `${percentage.toFixed(2)}%`
+        };
+      });
+
+      return calculatedData;
+    } catch(err) {
+      console.error(err);
+      return [];
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportAll = async (format: 'excel' | 'csv' | 'pdf') => {
+    const data = await getExportData();
+    if (data.length === 0) return;
 
     if (format === 'excel') exportToExcel(data, 'All_Students_Report');
     else if (format === 'csv') exportToCSV(data, 'All_Students_Report');
@@ -499,7 +571,23 @@ export const StudentReports: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => handleExportAll('excel')}>
+            <Button variant="outline" size="sm" onClick={() => {
+              const studentAttempts = attempts.filter(a => a.studentId === selectedStudent.uid && (a.status === 'submitted' || a.status === 'graded'));
+              const data = studentAttempts.map(a => {
+                const exam = exams.find(e => e.id === a.examId);
+                const fullMarks = exam ? exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) : 0;
+                const score = calculateTotalObtained(a, exam);
+                return {
+                  'Exam': exam?.title || 'Unknown',
+                  'Date': new Date(a.endTime || a.startTime).toLocaleString(),
+                  'Score': score,
+                  'Total Marks': fullMarks,
+                  'Percentage': fullMarks > 0 ? `${((score / fullMarks) * 100).toFixed(2)}%` : 'N/A',
+                  'Status': a.isPublished ? 'Published' : 'Pending'
+                };
+              });
+              exportToExcel(data, `${selectedStudent.displayName}_History`);
+            }}>
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Export History
             </Button>

@@ -105,13 +105,41 @@ export const UserActivitiesLog: React.FC = () => {
     setSelectedLogs(next);
   };
 
-  const getLogsToExport = () => {
-    if (selectedLogs.size === 0) return filteredLogs; // If none selected, export all filtered
-    return filteredLogs.filter(l => selectedLogs.has(l.id as string));
+  const [isExporting, setIsExporting] = useState(false);
+
+  const getLogsToExport = async () => {
+    if (selectedLogs.size > 0) {
+      return filteredLogs.filter(l => selectedLogs.has(l.id as string));
+    }
+    
+    setIsExporting(true);
+    try {
+      const logsCol = collection(db, 'user_activities');
+      // Fetch up to 5000 logs for export to prevent memory issues, but sufficient to bypass pagination.
+      const q = query(logsCol, orderBy('timestamp', 'desc'), limit(5000));
+      const snapshot = await getDocs(q);
+      let allExportData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
+      
+      if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.toLowerCase();
+        allExportData = allExportData.filter(log => 
+          log.userName.toLowerCase().includes(term) ||
+          log.userEmail.toLowerCase().includes(term) ||
+          log.action.toLowerCase().includes(term)
+        );
+      }
+      return allExportData;
+    } catch (error) {
+      console.error("Export fetch error:", error);
+      return [];
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const exportExcel = () => {
-    const dataToExport = getLogsToExport().map(log => ({
+  const exportExcel = async () => {
+    const records = await getLogsToExport();
+    const dataToExport = records.map(log => ({
       Timestamp: new Date(log.timestamp).toLocaleString(),
       Name: log.userName,
       Email: log.userEmail,
@@ -124,8 +152,9 @@ export const UserActivitiesLog: React.FC = () => {
     XLSX.writeFile(workbook, `user_activities_${new Date().toISOString()}.xlsx`);
   };
 
-  const exportCSV = () => {
-    const dataToExport = getLogsToExport().map(log => ({
+  const exportCSV = async () => {
+    const records = await getLogsToExport();
+    const dataToExport = records.map(log => ({
       Timestamp: new Date(log.timestamp).toLocaleString(),
       Name: log.userName,
       Email: log.userEmail,
@@ -144,9 +173,10 @@ export const UserActivitiesLog: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const records = await getLogsToExport();
     const doc = new jsPDF();
-    const dataToExport = getLogsToExport().map(log => [
+    const dataToExport = records.map(log => [
       new Date(log.timestamp).toLocaleString(),
       log.userName,
       log.userEmail,
