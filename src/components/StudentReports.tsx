@@ -55,6 +55,8 @@ export const StudentReports: React.FC = () => {
   const [totalStudentsCount, setTotalStudentsCount] = useState(0);
   const [firstDoc, setFirstDoc] = useState<any>(null);
   const [lastDoc, setLastDoc] = useState<any>(null);
+  const [searchBuffer, setSearchBuffer] = useState<UserProfile[] | null>(null);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
 
   // Detail List Pagination
   const [detailCurrentPage, setDetailCurrentPage] = useState(1);
@@ -91,8 +93,35 @@ export const StudentReports: React.FC = () => {
       const studentsCol = collection(db, 'users');
       let q;
 
+      // Optimisation: Search Buffer logic
+      if (debouncedSearchTerm) {
+        // If we have a buffer and the new term is a refinement, don't fetch from Firestore
+        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+          setIsRefreshing(false);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch new buffer
+        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
+        setLastSearchQuery(debouncedSearchTerm);
+      } else {
+        // Not searching, clear buffer
+        setSearchBuffer(null);
+        setLastSearchQuery('');
+        
+        const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
+        if (direction === 'next' && lastDoc) {
+          q = query(studentsCol, ...baseConstraints, startAfter(lastDoc));
+        } else if (direction === 'prev' && firstDoc) {
+          q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
+        } else {
+          q = query(studentsCol, ...baseConstraints);
+        }
+      }
+
+      const cacheKey = 'total_students_count';
       if (direction === 'first' || !direction) {
-        const cacheKey = 'total_students_count';
         const cached = sessionStorage.getItem(cacheKey);
         if (cached && !isRefreshing) {
           setTotalStudentsCount(Number(cached));
@@ -104,72 +133,74 @@ export const StudentReports: React.FC = () => {
         }
       }
 
-      const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
-
-      if (debouncedSearchTerm) {
-        // Fetch a larger set for search to allow effective client-side filtering
-        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
-      } else {
-        if (direction === 'next' && lastDoc) {
-          q = query(studentsCol, ...baseConstraints, startAfter(lastDoc));
-        } else if (direction === 'prev' && firstDoc) {
-          q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
-        } else {
-          q = query(studentsCol, ...baseConstraints);
-        }
-      }
-
       const studentsSnap = await getDocs(q);
       let studentsData = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       
-      // Client-side filter for search matches
       if (debouncedSearchTerm) {
-        const term = debouncedSearchTerm.toLowerCase();
-        studentsData = studentsData.filter(s => 
-          s.displayName.toLowerCase().includes(term) ||
-          s.email.toLowerCase().includes(term)
-        );
+        setSearchBuffer(studentsData);
+      } else {
+        setStudents(studentsData);
+        setFirstDoc(studentsSnap.docs[0]);
+        setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);
       }
-
-      setStudents(studentsData);
-      setFirstDoc(studentsSnap.docs[0]);
-      setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);
 
       if (!direction || direction === 'first') setCurrentPage(1);
       else if (direction === 'next') setCurrentPage(prev => prev + 1);
       else if (direction === 'prev') setCurrentPage(prev => prev - 1);
 
-      // Now fetch only the attempts for these specific students to minimize reads
-      if (studentsData.length > 0) {
-        const studentIds = studentsData.map(s => s.uid);
-        let allAttempts: ExamAttempt[] = [];
-        
-        // Chunk 'in' queries to respect Firestore's 30-item limit
-        for (let i = 0; i < studentIds.length; i += 30) {
-          const batchIds = studentIds.slice(i, i + 30);
-          const attemptsSnap = await getDocs(query(
-            collection(db, 'attempts'), 
-            where('studentId', 'in', batchIds)
-          ));
-          allAttempts = [...allAttempts, ...attemptsSnap.docs.map(doc => doc.data() as ExamAttempt)];
-        }
-        
-        setAttempts(allAttempts);
-
-        // Fetch all exams once if needed (usually fewer than students)
-        if (exams.length === 0) {
-          const examsData = await metadataCache.getExamsList();
-          setExams(examsData);
-        }
-        setHasLoadedReports(true);
-      }
     } catch (error) {
       console.error('Error fetching reports data:', error);
     } finally {
       setIsRefreshing(false);
       setLoading(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, exams.length]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, isRefreshing, searchBuffer, lastSearchQuery]);
+
+  // Effect to handle attempts fetching for visible page only (Massive optimization)
+  useEffect(() => {
+    const fetchAttemptsForVisibleStudents = async () => {
+      let visibleIds: string[] = [];
+      if (debouncedSearchTerm && searchBuffer) {
+        const term = debouncedSearchTerm.toLowerCase();
+        const filtered = searchBuffer.filter(s => 
+          s.displayName.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term)
+        );
+        const start = (currentPage - 1) * itemsPerPage;
+        visibleIds = filtered.slice(start, start + itemsPerPage).map(s => s.uid);
+      } else {
+        visibleIds = students.map(s => s.uid);
+      }
+
+      if (visibleIds.length === 0) return;
+
+      try {
+        let allAttempts: ExamAttempt[] = [];
+        // Chunk 'in' queries to respect Firestore's 30-item limit
+        for (let i = 0; i < visibleIds.length; i += 30) {
+          const batchIds = visibleIds.slice(i, i + 30);
+          const attemptsSnap = await getDocs(query(
+            collection(db, 'attempts'), 
+            where('studentId', 'in', batchIds)
+          ));
+          allAttempts = [...allAttempts, ...attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt))];
+        }
+        setAttempts(allAttempts);
+
+        if (exams.length === 0) {
+          const examsData = await metadataCache.getExamsList();
+          setExams(examsData);
+        }
+        setHasLoadedReports(true);
+      } catch (e) {
+        console.error("Error fetching attempts for page:", e);
+      }
+    };
+
+    if (students.length > 0 || searchBuffer) {
+      fetchAttemptsForVisibleStudents();
+    }
+  }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, exams.length]);
 
   useEffect(() => {
     fetchData('first');
@@ -317,6 +348,50 @@ export const StudentReports: React.FC = () => {
     }
   };
 
+  const filteredStudents = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const term = debouncedSearchTerm.toLowerCase();
+      return searchBuffer.filter(s => 
+        s.displayName.toLowerCase().includes(term) ||
+        s.email.toLowerCase().includes(term)
+      );
+    }
+    return students;
+  }, [students, searchBuffer, debouncedSearchTerm]);
+
+  // Main List Pagination logic 
+  const mainPaginatedStudents = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const start = (currentPage - 1) * itemsPerPage;
+      return filteredStudents.slice(start, start + itemsPerPage);
+    }
+    return students;
+  }, [students, filteredStudents, currentPage, itemsPerPage, debouncedSearchTerm, searchBuffer]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > currentPage) {
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchData('next');
+      }
+    } else if (newPage < currentPage) {
+      if (newPage < 1) return;
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchData('prev');
+      }
+    }
+  };
+
+  const totalPagesForSearch = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      return Math.ceil(filteredStudents.length / itemsPerPage);
+    }
+    return 1;
+  }, [debouncedSearchTerm, filteredStudents.length, searchBuffer, itemsPerPage]);
+
   const toggleSelectAll = () => {
     if (selectedStudentIds.length === filteredStudents.length) {
       setSelectedStudentIds([]);
@@ -331,17 +406,6 @@ export const StudentReports: React.FC = () => {
     );
   };
 
-  const filteredStudents = students;
-
-  // Main List Pagination logic (already handled by fetchUsers in this optimized version)
-  const mainPaginatedStudents = students;
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage > currentPage) fetchData('next');
-    else if (newPage < currentPage) fetchData('prev');
-  };
-
-  // Detail List Pagination logic
   const detailTotalPages = Math.ceil(studentAttempts.length / detailItemsPerPage);
   const detailPaginatedAttempts = studentAttempts.slice((detailCurrentPage - 1) * detailItemsPerPage, detailCurrentPage * detailItemsPerPage);
 
@@ -1162,7 +1226,7 @@ export const StudentReports: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchData('first')}
+                onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1 || loading}
               >
                 First
@@ -1170,20 +1234,22 @@ export const StudentReports: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchData('prev')}
+                onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1 || loading}
                 className="h-8 w-8 p-0"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               
-              <span className="text-xs font-medium px-2">Page {currentPage}</span>
+              <span className="text-xs font-medium px-2">
+                Page {currentPage} {debouncedSearchTerm && searchBuffer ? `of ${totalPagesForSearch}` : ''}
+              </span>
 
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchData('next')}
-                disabled={students.length < itemsPerPage || loading}
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={loading || (debouncedSearchTerm && searchBuffer ? currentPage >= totalPagesForSearch : students.length < itemsPerPage)}
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="w-4 h-4" />

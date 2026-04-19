@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, getDocs, startAfter, endBefore, limitToLast, getCountFromServer, where } from 'firebase/firestore';
 import { UserActivityLog } from '../types';
@@ -25,6 +25,8 @@ export const UserActivitiesLog: React.FC = () => {
   const [totalLogsCount, setTotalLogsCount] = useState(0);
   const [firstDoc, setFirstDoc] = useState<any>(null);
   const [lastDoc, setLastDoc] = useState<any>(null);
+  const [searchBuffer, setSearchBuffer] = useState<UserActivityLog[] | null>(null);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
 
   const fetchLogs = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setLoading(true);
@@ -32,25 +34,19 @@ export const UserActivitiesLog: React.FC = () => {
       const logsCol = collection(db, 'user_activities');
       let q;
 
-      if (direction === 'first' || !direction) {
-        const cacheKey = 'total_logs_count';
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached && !loading) { // Using loading as refresh flag here or similar
-          setTotalLogsCount(Number(cached));
-        } else {
-          const countSnap = await getCountFromServer(logsCol);
-          const count = countSnap.data().count;
-          setTotalLogsCount(count);
-          sessionStorage.setItem(cacheKey, count.toString());
-        }
-      }
-
-      const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];
-
+      // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
-        // Fetch up to 1000 logs when searching to bypass local page filters
-        q = query(logsCol, orderBy('timestamp', 'desc'), limit(1000)); 
+        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+          setLoading(false);
+          return;
+        }
+        q = query(logsCol, orderBy('timestamp', 'desc'), limit(1000));
+        setLastSearchQuery(debouncedSearchTerm);
       } else {
+        setSearchBuffer(null);
+        setLastSearchQuery('');
+
+        const baseConstraints = [orderBy('timestamp', 'desc'), limit(itemsPerPage)];
         if (direction === 'next' && lastDoc) {
           q = query(logsCol, ...baseConstraints, startAfter(lastDoc));
         } else if (direction === 'prev' && firstDoc) {
@@ -60,22 +56,30 @@ export const UserActivitiesLog: React.FC = () => {
         }
       }
 
-      const snapshot = await getDocs(q);
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
-      
-      if (debouncedSearchTerm) {
-        const term = debouncedSearchTerm.toLowerCase();
-        data = data.filter(log => 
-          log.userName.toLowerCase().includes(term) ||
-          log.userEmail.toLowerCase().includes(term) ||
-          log.action.toLowerCase().includes(term)
-        );
+      const cacheKey = 'total_logs_count';
+      if (direction === 'first' || !direction) {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached && !loading) { 
+          setTotalLogsCount(Number(cached));
+        } else {
+          const countSnap = await getCountFromServer(logsCol);
+          const count = countSnap.data().count;
+          setTotalLogsCount(count);
+          sessionStorage.setItem(cacheKey, count.toString());
+        }
       }
 
-      setLogs(data);
-      setFilteredLogs(data);
-      setFirstDoc(snapshot.docs[0]);
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as UserActivityLog));
+      
+      if (debouncedSearchTerm) {
+        setSearchBuffer(data);
+      } else {
+        setLogs(data);
+        setFilteredLogs(data);
+        setFirstDoc(snapshot.docs[0]);
+        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      }
 
       if (!direction || direction === 'first') setCurrentPage(1);
       else if (direction === 'next') setCurrentPage(prev => prev + 1);
@@ -86,19 +90,63 @@ export const UserActivitiesLog: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]);
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, searchBuffer, lastSearchQuery, loading]);
 
   useEffect(() => {
     fetchLogs('first');
   }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
+    setSearchBuffer(null);
     fetchLogs('first');
+  };
+
+  const currentDisplayLogs = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const term = debouncedSearchTerm.toLowerCase();
+      const filtered = searchBuffer.filter(log => 
+        log.userName.toLowerCase().includes(term) ||
+        log.userEmail.toLowerCase().includes(term) ||
+        log.action.toLowerCase().includes(term)
+      );
+      const start = (currentPage - 1) * itemsPerPage;
+      return filtered.slice(start, start + itemsPerPage);
+    }
+    return logs;
+  }, [logs, searchBuffer, debouncedSearchTerm, currentPage, itemsPerPage]);
+
+  const totalFilteredCount = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const term = debouncedSearchTerm.toLowerCase();
+      return searchBuffer.filter(log => 
+        log.userName.toLowerCase().includes(term) ||
+        log.userEmail.toLowerCase().includes(term) ||
+        log.action.toLowerCase().includes(term)
+      ).length;
+    }
+    return totalLogsCount;
+  }, [totalLogsCount, searchBuffer, debouncedSearchTerm]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > currentPage) {
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchLogs('next');
+      }
+    } else if (newPage < currentPage) {
+      if (newPage < 1) return;
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchLogs('prev');
+      }
+    }
   };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedLogs(new Set(logs.map(l => l.id as string)));
+      setSelectedLogs(new Set(currentDisplayLogs.map(l => l.id as string)));
     } else {
       setSelectedLogs(new Set());
     }
@@ -269,12 +317,12 @@ export const UserActivitiesLog: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {logs.length === 0 ? (
+                {currentDisplayLogs.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-muted-foreground">No logs found.</td>
                   </tr>
                 ) : (
-                  logs.map(log => (
+                  currentDisplayLogs.map(log => (
                     <tr key={log.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="p-3">
                         <input 
@@ -309,8 +357,8 @@ export const UserActivitiesLog: React.FC = () => {
           {/* Pagination Controls */}
           <div className="mt-4 flex items-center justify-between bg-muted/20 p-2 rounded-lg border border-border">
             <div className="text-xs text-muted-foreground px-2">
-              {searchTerm 
-                ? `Search results shown (limited)` 
+              {debouncedSearchTerm && searchBuffer 
+                ? `Showing matching logs (${totalFilteredCount} matches)` 
                 : `Page ${currentPage} (approx ${totalLogsCount} total entries)`
               }
             </div>
@@ -318,7 +366,7 @@ export const UserActivitiesLog: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchLogs('first')}
+                onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1 || loading}
                 className="px-3"
               >
@@ -327,7 +375,7 @@ export const UserActivitiesLog: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchLogs('prev')}
+                onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1 || loading}
                 className="h-8 w-8 p-0"
               >
@@ -337,8 +385,8 @@ export const UserActivitiesLog: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => fetchLogs('next')}
-                disabled={logs.length < itemsPerPage || loading}
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={loading || (debouncedSearchTerm && searchBuffer ? (currentPage * itemsPerPage >= totalFilteredCount) : logs.length < itemsPerPage)}
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="w-4 h-4" />

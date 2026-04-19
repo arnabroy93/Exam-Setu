@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, updateDoc, doc, deleteDoc, writeBatch, query, orderBy, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
@@ -41,6 +41,8 @@ export const UserManagement: React.FC = () => {
   const [totalUsersCount, setTotalUsersCount] = useState(0);
   const [firstDoc, setFirstDoc] = useState<any>(null);
   const [lastDoc, setLastDoc] = useState<any>(null);
+  const [searchBuffer, setSearchBuffer] = useState<UserProfile[] | null>(null);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
   
   // Selection state
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -58,6 +60,29 @@ export const UserManagement: React.FC = () => {
       const usersCol = collection(db, 'users');
       let q;
 
+      // Optimisation: Search Buffer logic
+      if (debouncedSearchTerm) {
+        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+          setLoading(false);
+          setIsRefreshing(false);
+          return;
+        }
+        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000));
+        setLastSearchQuery(debouncedSearchTerm);
+      } else {
+        setSearchBuffer(null);
+        setLastSearchQuery('');
+
+        const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
+        if (direction === 'next' && lastDoc) {
+          q = query(usersCol, ...baseConstraints, startAfter(lastDoc));
+        } else if (direction === 'prev' && firstDoc) {
+          q = query(usersCol, orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
+        } else {
+          q = query(usersCol, ...baseConstraints);
+        }
+      }
+
       // Get count if on first page or refresh or search
       if (direction === 'first' || !direction) {
         const cacheKey = 'total_users_count';
@@ -72,26 +97,16 @@ export const UserManagement: React.FC = () => {
         }
       }
 
-      if (debouncedSearchTerm) {
-        // Fetch a larger set for search to allow effective client-side filtering
-        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000)); 
-      } else {
-        const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
-        if (direction === 'next' && lastDoc) {
-          q = query(usersCol, ...baseConstraints, startAfter(lastDoc));
-        } else if (direction === 'prev' && firstDoc) {
-          q = query(usersCol, orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
-        } else {
-          q = query(usersCol, ...baseConstraints);
-        }
-      }
-
       const snapshot = await getDocs(q);
       const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       
-      setUsers(usersData);
-      setFirstDoc(snapshot.docs[0]);
-      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      if (debouncedSearchTerm) {
+        setSearchBuffer(usersData);
+      } else {
+        setUsers(usersData);
+        setFirstDoc(snapshot.docs[0]);
+        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      }
       
       if (!direction || direction === 'first') setCurrentPage(1);
       else if (direction === 'next') setCurrentPage(prev => prev + 1);
@@ -103,7 +118,7 @@ export const UserManagement: React.FC = () => {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc]); 
+  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, isRefreshing, searchBuffer, lastSearchQuery]); 
 
   useEffect(() => {
     fetchUsers('first');
@@ -184,10 +199,51 @@ export const UserManagement: React.FC = () => {
     }
   };
 
-  const filteredUsers = users.filter(user => 
-    user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const term = debouncedSearchTerm.toLowerCase();
+      return searchBuffer.filter(user => 
+        user.displayName.toLowerCase().includes(term) ||
+        user.email.toLowerCase().includes(term)
+      );
+    }
+    return users.filter(user => 
+      user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [users, searchBuffer, debouncedSearchTerm, searchTerm]);
+
+  const mainPaginatedUsers = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      const start = (currentPage - 1) * itemsPerPage;
+      return filteredUsers.slice(start, start + itemsPerPage);
+    }
+    return users;
+  }, [users, filteredUsers, currentPage, itemsPerPage, debouncedSearchTerm, searchBuffer]);
+
+  const totalPages = useMemo(() => {
+    if (debouncedSearchTerm && searchBuffer) {
+      return Math.ceil(filteredUsers.length / itemsPerPage);
+    }
+    return Math.ceil(totalUsersCount / itemsPerPage);
+  }, [totalUsersCount, itemsPerPage, debouncedSearchTerm, filteredUsers.length, searchBuffer]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > currentPage) {
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchUsers('next');
+      }
+    } else if (newPage < currentPage) {
+      if (newPage < 1) return;
+      if (debouncedSearchTerm && searchBuffer) {
+        setCurrentPage(newPage);
+      } else {
+        fetchUsers('prev');
+      }
+    }
+  };
 
   const getExportData = async () => {
     setIsExporting(true);
@@ -261,7 +317,7 @@ export const UserManagement: React.FC = () => {
 
   // If we are searching, we display all filtered results (from the 100 fetched)
   // If we are NOT searching, we display the current page of paged users
-  const displayUsers = searchTerm ? filteredUsers : users;
+  const displayUsers = mainPaginatedUsers;
 
   const toggleSelectAll = () => {
     if (selectedUserIds.length === displayUsers.length) {
@@ -477,43 +533,41 @@ export const UserManagement: React.FC = () => {
           </div>
           
           {/* Pagination Controls */}
-          {!searchTerm && totalUsersCount > itemsPerPage && (
-            <div className="p-4 border-t flex items-center justify-between bg-muted/10">
-              <p className="text-xs text-muted-foreground">
-                Page {currentPage} of approx {Math.ceil(totalUsersCount / itemsPerPage)} (Total: {totalUsersCount})
-              </p>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => fetchUsers('first')}
-                  disabled={currentPage === 1 || loading}
-                  className="px-3"
-                >
-                  First
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => fetchUsers('prev')}
-                  disabled={currentPage === 1 || loading}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <span className="text-xs font-medium px-2">Page {currentPage}</span>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => fetchUsers('next')}
-                  disabled={users.length < itemsPerPage || loading}
-                  className="h-8 w-8 p-0"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
+          <div className="p-4 border-t flex items-center justify-between bg-muted/10">
+            <p className="text-xs text-muted-foreground">
+              Page {currentPage} of {debouncedSearchTerm && searchBuffer ? totalPages : Math.ceil(totalUsersCount / itemsPerPage)} (Total matching: {filteredUsers.length})
+            </p>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1 || loading}
+                className="px-3"
+              >
+                First
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1 || loading}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs font-medium px-2">Page {currentPage}</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={loading || (debouncedSearchTerm && searchBuffer ? currentPage >= totalPages : users.length < itemsPerPage)}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
