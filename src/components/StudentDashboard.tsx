@@ -21,17 +21,20 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
     if (!profile) return;
     if (force) setIsRefreshing(true);
       
-    // Check cache
+    // Check cache - Persistent localStorage
     if (!force) {
-      const cached = sessionStorage.getItem(`student_dashboard_${profile.uid}`);
+      const localCacheKey = `student_dashboard_v2_${profile.uid}`;
+      const cached = localStorage.getItem(localCacheKey);
       if (cached) {
-        const { availableExams, recentAttempts, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
-          setAvailableExams(availableExams);
-          setRecentAttempts(recentAttempts);
-          setLoading(false);
-          return;
-        }
+        try {
+          const { availableExams, recentAttempts, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 3600000) { // 1 hour persistent cache
+            setAvailableExams(availableExams);
+            setRecentAttempts(recentAttempts);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {}
       }
     }
 
@@ -68,8 +71,8 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       setAvailableExams(examsData);
       setRecentAttempts(enrichedAttempts);
       
-      // Cache data
-      sessionStorage.setItem(`student_dashboard_${profile.uid}`, JSON.stringify({
+      // Cache data persistently
+      localStorage.setItem(`student_dashboard_v2_${profile.uid}`, JSON.stringify({
         availableExams: examsData,
         recentAttempts: enrichedAttempts,
         timestamp: Date.now()

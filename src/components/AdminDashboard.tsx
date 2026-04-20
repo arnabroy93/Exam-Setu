@@ -219,15 +219,18 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   };
 
   const fetchRecentActivity = async (force = false) => {
-    // Check cache
+    // Persistent cache check
+    const localCacheKey = 'admin_recent_activity_persistent';
     if (!force) {
-      const cached = sessionStorage.getItem('admin_recent_activity');
+      const cached = localStorage.getItem(localCacheKey);
       if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
-          setRecentAttempts(data);
-          return;
-        }
+        try {
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 1800000) { // 30 mins cache
+            setRecentAttempts(data);
+            return;
+          }
+        } catch (e) {}
       }
     }
 
@@ -247,7 +250,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       }));
 
       setRecentAttempts(enriched);
-      sessionStorage.setItem('admin_recent_activity', JSON.stringify({ data: enriched, timestamp: Date.now() }));
+      localStorage.setItem(localCacheKey, JSON.stringify({ data: enriched, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error fetching recent activity:', error);
     }

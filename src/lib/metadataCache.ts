@@ -13,15 +13,17 @@ class MetadataCache {
       return this.userCache[uid].profile;
     }
 
-    // 2. Session Storage
-    const sessionKey = `user_meta_${uid}`;
-    const sessionData = sessionStorage.getItem(sessionKey);
-    if (sessionData) {
-      const { profile, timestamp } = JSON.parse(sessionData);
-      if (Date.now() - timestamp < this.TTL) {
-        this.userCache[uid] = { profile, timestamp };
-        return profile;
-      }
+    // 2. Session/Local Storage
+    const cacheKey = `user_meta_${uid}`;
+    const storageData = sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey);
+    if (storageData) {
+      try {
+        const { profile, timestamp } = JSON.parse(storageData);
+        if (Date.now() - timestamp < this.TTL) {
+          this.userCache[uid] = { profile, timestamp };
+          return profile;
+        }
+      } catch (e) {}
     }
 
     // 3. Firestore Cache
@@ -58,14 +60,16 @@ class MetadataCache {
       return this.examCache[id].exam;
     }
 
-    const sessionKey = `exam_meta_${id}`;
-    const sessionData = sessionStorage.getItem(sessionKey);
-    if (sessionData) {
-      const { exam, timestamp } = JSON.parse(sessionData);
-      if (Date.now() - timestamp < this.TTL) {
-        this.examCache[id] = { exam, timestamp };
-        return exam;
-      }
+    const cacheKey = `exam_meta_${id}`;
+    const storageData = sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey);
+    if (storageData) {
+      try {
+        const { exam, timestamp } = JSON.parse(storageData);
+        if (Date.now() - timestamp < this.TTL) {
+          this.examCache[id] = { exam, timestamp };
+          return exam;
+        }
+      } catch (e) {}
     }
 
     try {
@@ -96,32 +100,37 @@ class MetadataCache {
   private cacheUser(uid: string, profile: UserProfile) {
     const data = { profile, timestamp: Date.now() };
     this.userCache[uid] = data;
-    sessionStorage.setItem(`user_meta_${uid}`, JSON.stringify(data));
+    const json = JSON.stringify(data);
+    sessionStorage.setItem(`user_meta_${uid}`, json);
+    localStorage.setItem(`user_meta_${uid}`, json);
   }
 
   private cacheExam(id: string, exam: Exam) {
     const data = { exam, timestamp: Date.now() };
     this.examCache[id] = data;
-    sessionStorage.setItem(`exam_meta_${id}`, JSON.stringify(data));
+    const json = JSON.stringify(data);
+    sessionStorage.setItem(`exam_meta_${id}`, json);
+    localStorage.setItem(`exam_meta_${id}`, json);
   }
 
   async getExamsList(): Promise<Exam[]> {
-    const cacheKey = 'global_exams_list';
-    const cached = sessionStorage.getItem(cacheKey);
+    const cacheKey = 'global_exams_list_persistent';
+    const cached = localStorage.getItem(cacheKey);
     if (cached) {
-      const { data, timestamp } = JSON.parse(cached);
-      if (Date.now() - timestamp < 3600000) { // 1 hour cache
-        return data;
-      }
+      try {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 7200000) { // 2 hour cache
+          return data;
+        }
+      } catch (e) {}
     }
 
     try {
-      // Try cache first
-      const q = query(collection(db, 'exams'), limit(200));
+      const q = query(collection(db, 'exams'), limit(250));
       const snapshot = await getDocs(q);
       const exams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
       
-      sessionStorage.setItem(cacheKey, JSON.stringify({ data: exams, timestamp: Date.now() }));
+      localStorage.setItem(cacheKey, JSON.stringify({ data: exams, timestamp: Date.now() }));
       return exams;
     } catch (e) {
       return [];

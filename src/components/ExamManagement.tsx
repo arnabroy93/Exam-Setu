@@ -36,14 +36,36 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const fetchExams = async () => {
+  const [loading, setLoading] = useState(true);
+
+  const fetchExams = async (force = false) => {
+    // Persistent cache check
+    const cacheKey = 'exam_management_list_persistent';
+    if (!force) {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 900000) { // 15 mins cache
+            setExams(data);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {}
+      }
+    }
+
+    setLoading(true);
     try {
-      const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'), limit(50));
+      const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'), limit(100));
       const snapshot = await getDocs(q);
       const examsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
       setExams(examsData);
+      localStorage.setItem(cacheKey, JSON.stringify({ data: examsData, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error fetching exams:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -56,8 +78,10 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
     
     try {
       await deleteDoc(doc(db, 'exams', examToDelete));
+      localStorage.removeItem('exam_management_list_persistent'); // Invalidate cache
       setExamToDelete(null);
       setIsDeleteDialogOpen(false);
+      fetchExams(true); // Force refresh
     } catch (error) {
       console.error('Error deleting exam:', error);
     }
