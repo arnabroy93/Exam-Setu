@@ -354,6 +354,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           renderRow: (attempt: ExamAttempt) => {
             const student = students.find(s => s.uid === attempt.studentId);
             const exam = exams.find(e => e.id === attempt.examId);
+            const scoreDisplay = attempt.score !== undefined ? `${attempt.score}%` : (attempt.autoScore !== undefined ? `Auto: ${attempt.autoScore}` : 'N/A');
+            
             return (
               <TableRow key={attempt.id}>
                 <TableCell className="font-medium">{student?.displayName || attempt.studentId}</TableCell>
@@ -363,7 +365,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                     {attempt.status === 'submitted' ? 'Pending Grading' : attempt.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{attempt.score !== undefined ? `${attempt.score}%` : 'N/A'}</TableCell>
+                <TableCell>{scoreDisplay}</TableCell>
                 <TableCell>{new Date(attempt.endTime || attempt.startTime).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)}>

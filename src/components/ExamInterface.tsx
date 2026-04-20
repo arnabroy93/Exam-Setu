@@ -167,6 +167,8 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         }
       });
 
+      const totalPossibleMarks = shuffledQuestions.reduce((sum, q) => sum + (q.points || 0), 0);
+
       const attemptData: any = {
         id: attemptId,
         examId: exam.id,
@@ -176,6 +178,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
         autoScore: autoScore,
+        totalPossibleMarks,
         suspiciousActivity: logs.map(log => ({
           timestamp: log.timestamp || Date.now(),
           type: log.type || 'unknown',

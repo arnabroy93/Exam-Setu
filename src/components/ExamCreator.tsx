@@ -89,6 +89,8 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
     }
 
     const examId = initialExam?.id || Math.random().toString(36).substr(2, 9);
+    const totalPossibleMarks = questions.reduce((sum, q) => sum + (q.points || 0), 0);
+
     const newExam: Exam = {
       id: examId,
       title,
@@ -100,6 +102,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
       status: status,
       createdAt: initialExam?.createdAt || Date.now(),
       settings: settings,
+      totalPossibleMarks,
     };
 
     if (startTime) newExam.startTime = new Date(startTime).getTime();

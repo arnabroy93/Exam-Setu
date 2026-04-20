@@ -57,16 +57,28 @@ export const UserActivitiesLog: React.FC = () => {
         }
       }
 
-      const cacheKey = 'total_logs_count';
+      const cacheKey = 'total_logs_count_persistent';
       if (direction === 'first' || !direction) {
-        const cached = sessionStorage.getItem(cacheKey);
+        const cached = localStorage.getItem(cacheKey);
         if (cached && !loading) { 
-          setTotalLogsCount(Number(cached));
+          try {
+            const { count, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
+              setTotalLogsCount(count);
+            } else {
+              throw new Error('stale');
+            }
+          } catch (e) {
+            const countSnap = await getCountFromServer(logsCol);
+            const count = countSnap.data().count;
+            setTotalLogsCount(count);
+            localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
+          }
         } else {
           const countSnap = await getCountFromServer(logsCol);
           const count = countSnap.data().count;
           setTotalLogsCount(count);
-          sessionStorage.setItem(cacheKey, count.toString());
+          localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
       }
 

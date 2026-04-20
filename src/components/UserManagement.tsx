@@ -86,15 +86,27 @@ export const UserManagement: React.FC = () => {
 
       // Get count if on first page or refresh or search
       if (direction === 'first' || !direction) {
-        const cacheKey = 'total_users_count';
-        const cached = sessionStorage.getItem(cacheKey);
+        const cacheKey = 'total_users_count_persistent';
+        const cached = localStorage.getItem(cacheKey);
         if (cached && !isRefreshing) {
-          setTotalUsersCount(Number(cached));
+          try {
+            const { count, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
+              setTotalUsersCount(count);
+            } else {
+              throw new Error('stale');
+            }
+          } catch (e) {
+            const countSnap = await getCountFromServer(usersCol);
+            const count = countSnap.data().count;
+            setTotalUsersCount(count);
+            localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
+          }
         } else {
           const countSnap = await getCountFromServer(usersCol);
           const count = countSnap.data().count;
           setTotalUsersCount(count);
-          sessionStorage.setItem(cacheKey, count.toString());
+          localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
       }
 

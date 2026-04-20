@@ -40,16 +40,21 @@ export const calculateAutoScore = (questions: Question[], answers: Record<string
 };
 
 export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): number => {
-  // Use stored score if available and graded
-  if (attempt.status === 'graded' && attempt.score !== undefined) {
+  // 1. Use already finalized score if available
+  if ((attempt.status === 'graded' || attempt.status === 'submitted') && attempt.score !== undefined) {
     return attempt.score;
   }
 
-  // Otherwise calculate from autoScore and manualGrades
+  // 2. Use stored autoScore if available
   const autoScore = attempt.autoScore ?? (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
+  
+  // 3. Sum manual grades
   const manualTotal = attempt.manualGrades 
     ? (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0)
     : 0;
   
-  return autoScore + manualTotal;
+  const total = autoScore + manualTotal;
+  
+  // If exam is provided and attempt is finalized but lacks a score, we might want to return it but it's safer to just return calculated
+  return total;
 };

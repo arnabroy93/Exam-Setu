@@ -121,16 +121,28 @@ export const StudentReports: React.FC = () => {
         }
       }
 
-      const cacheKey = 'total_students_count';
+      const cacheKey = 'total_students_count_persistent';
       if (direction === 'first' || !direction) {
-        const cached = sessionStorage.getItem(cacheKey);
+        const cached = localStorage.getItem(cacheKey);
         if (cached && !isRefreshing) {
-          setTotalStudentsCount(Number(cached));
+          try {
+            const { count, timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
+              setTotalStudentsCount(count);
+            } else {
+              throw new Error('stale');
+            }
+          } catch (e) {
+            const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
+            const count = countSnap.data().count;
+            setTotalStudentsCount(count);
+            localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
+          }
         } else {
           const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
           const count = countSnap.data().count;
           setTotalStudentsCount(count);
-          sessionStorage.setItem(cacheKey, count.toString());
+          localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
       }
 
@@ -203,10 +215,6 @@ export const StudentReports: React.FC = () => {
           return next;
         });
 
-        if (exams.length === 0) {
-          const examsData = await metadataCache.getExamsList();
-          setExams(examsData);
-        }
         setHasLoadedReports(true);
       } catch (e) {
         console.error("Error fetching attempts for page:", e);
@@ -216,7 +224,18 @@ export const StudentReports: React.FC = () => {
     if (students.length > 0 || searchBuffer) {
       fetchAttemptsForVisibleStudents();
     }
-  }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, exams.length, attemptsFetchedUids]);
+  }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, attemptsFetchedUids]);
+
+  // Lazy fetch exams only when needed for detail view or grading
+  useEffect(() => {
+    const loadExams = async () => {
+      if ((view === 'student-details' || view === 'grading') && exams.length === 0) {
+        const examsData = await metadataCache.getExamsList();
+        setExams(examsData);
+      }
+    };
+    loadExams();
+  }, [view, exams.length]);
 
   useEffect(() => {
     fetchData('first');
@@ -266,8 +285,11 @@ export const StudentReports: React.FC = () => {
 
     Object.values(attemptsByExam).forEach(attempt => {
       const exam = exams.find(e => e.id === attempt.examId);
-      if (exam) {
-        const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
+      
+      // Use stored totalPossibleMarks or calculate from exam if missing (legacy compatibility)
+      const examFullMarks = attempt.totalPossibleMarks || (exam ? exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) : 0);
+      
+      if (examFullMarks > 0) {
         totalFullMarks += examFullMarks;
         totalScore += calculateTotalObtained(attempt, exam);
       }

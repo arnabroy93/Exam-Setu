@@ -43,6 +43,7 @@ export interface Exam {
   status: 'draft' | 'published' | 'archived';
   createdAt: number;
   settings: ExamSettings;
+  totalPossibleMarks?: number;
 }
 
 export interface ExamAttempt {
@@ -59,6 +60,7 @@ export interface ExamAttempt {
   isPublished?: boolean;
   feedback?: string;
   suspiciousActivity: ActivityLog[];
+  totalPossibleMarks?: number;
 }
 
 export interface ActivityLog {
