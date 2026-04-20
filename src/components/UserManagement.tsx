@@ -67,7 +67,8 @@ export const UserManagement: React.FC = () => {
           setIsRefreshing(false);
           return;
         }
-        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000));
+        // Limit search fetch to 200 to save quota
+        q = query(usersCol, orderBy('createdAt', 'desc'), limit(200));
         setLastSearchQuery(debouncedSearchTerm);
       } else {
         setSearchBuffer(null);
@@ -248,17 +249,16 @@ export const UserManagement: React.FC = () => {
   const getExportData = async () => {
     setIsExporting(true);
     try {
-      const usersCol = collection(db, 'users');
-      const q = query(usersCol, orderBy('createdAt', 'desc'), limit(5000));
-      const snapshot = await getDocs(q);
-      let allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+      let allUsers: UserProfile[] = [];
 
-      if (debouncedSearchTerm) {
-        const term = debouncedSearchTerm.toLowerCase();
-        allUsers = allUsers.filter(u => 
-          u.displayName.toLowerCase().includes(term) ||
-          u.email.toLowerCase().includes(term)
-        );
+      // Optimization: Use local buffer if searching
+      if (debouncedSearchTerm && searchBuffer && searchBuffer.length > 0) {
+        allUsers = filteredUsers;
+      } else {
+        const usersCol = collection(db, 'users');
+        const q = query(usersCol, orderBy('createdAt', 'desc'), limit(5000));
+        const snapshot = await getDocs(q);
+        allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       }
 
       if (selectedUserIds.length > 0) {

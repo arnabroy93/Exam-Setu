@@ -86,6 +86,7 @@ export const StudentReports: React.FC = () => {
   const [attemptToReset, setAttemptToReset] = useState<string | null>(null);
   const [isResettingAttempt, setIsResettingAttempt] = useState(false);
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
+  const [attemptsFetchedUids, setAttemptsFetchedUids] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
     setIsRefreshing(true);
@@ -102,8 +103,8 @@ export const StudentReports: React.FC = () => {
           return;
         }
 
-        // Fetch new buffer
-        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
+        // Fetch new buffer - reduced from 1000 to 200 to save quota
+        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(200));
         setLastSearchQuery(debouncedSearchTerm);
       } else {
         // Not searching, clear buffer
@@ -172,20 +173,35 @@ export const StudentReports: React.FC = () => {
         visibleIds = students.map(s => s.uid);
       }
 
-      if (visibleIds.length === 0) return;
+      // Optimization: Only fetch IDs that haven't been fetched in this session/component lifecycle
+      const idsToFetch = visibleIds.filter(id => !attemptsFetchedUids.has(id));
+      if (idsToFetch.length === 0) return;
 
       try {
-        let allAttempts: ExamAttempt[] = [];
+        let newAttempts: ExamAttempt[] = [];
         // Chunk 'in' queries to respect Firestore's 30-item limit
-        for (let i = 0; i < visibleIds.length; i += 30) {
-          const batchIds = visibleIds.slice(i, i + 30);
+        for (let i = 0; i < idsToFetch.length; i += 30) {
+          const batchIds = idsToFetch.slice(i, i + 30);
           const attemptsSnap = await getDocs(query(
             collection(db, 'attempts'), 
             where('studentId', 'in', batchIds)
           ));
-          allAttempts = [...allAttempts, ...attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt))];
+          newAttempts = [...newAttempts, ...attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt))];
         }
-        setAttempts(allAttempts);
+        
+        // Append to existing attempts state (unique only)
+        setAttempts(prev => {
+          const existingIds = new Set(prev.map(a => a.id));
+          const filteredNew = newAttempts.filter(a => !existingIds.has(a.id));
+          return [...prev, ...filteredNew];
+        });
+        
+        // Mark these UIDs as fetched
+        setAttemptsFetchedUids(prev => {
+          const next = new Set(prev);
+          idsToFetch.forEach(id => next.add(id));
+          return next;
+        });
 
         if (exams.length === 0) {
           const examsData = await metadataCache.getExamsList();
@@ -200,7 +216,7 @@ export const StudentReports: React.FC = () => {
     if (students.length > 0 || searchBuffer) {
       fetchAttemptsForVisibleStudents();
     }
-  }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, exams.length]);
+  }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, exams.length, attemptsFetchedUids]);
 
   useEffect(() => {
     fetchData('first');
@@ -458,25 +474,32 @@ export const StudentReports: React.FC = () => {
   const getExportData = async () => {
     setIsExporting(true);
     try {
-      const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(5000)));
-      let exportStudents = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
-
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        exportStudents = exportStudents.filter(s =>
-          s.displayName.toLowerCase().includes(term) ||
-          s.email.toLowerCase().includes(term)
-        );
+      let exportStudents: UserProfile[] = [];
+      
+      // Optimization: If search buffer is active, use it for export (up to the buffer size)
+      if (debouncedSearchTerm && searchBuffer && searchBuffer.length > 0) {
+        exportStudents = filteredStudents;
+      } else {
+        const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(5000)));
+        exportStudents = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
       }
 
       let exportAttempts: ExamAttempt[] = [];
       const studentIds = exportStudents.map(s => s.uid);
       
       if (studentIds.length > 0) {
-        for(let i=0; i<studentIds.length; i+=30) {
-           const batchIds = studentIds.slice(i, i+30);
-           const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
-           exportAttempts = [...exportAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+        // Optimization: Check what we already have in attemptsMemory (attemptsFetchedUids)
+        // If we have all of them, just filter attempts state
+        const allFetched = studentIds.every(id => attemptsFetchedUids.has(id));
+        if (allFetched) {
+          exportAttempts = attempts.filter(a => studentIds.includes(a.studentId));
+        } else {
+          // Fetch missing ones or all for export
+          for(let i=0; i<studentIds.length; i+=30) {
+            const batchIds = studentIds.slice(i, i+30);
+            const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
+            exportAttempts = [...exportAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+          }
         }
       }
 

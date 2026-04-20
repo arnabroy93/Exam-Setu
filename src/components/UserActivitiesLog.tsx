@@ -40,7 +40,8 @@ export const UserActivitiesLog: React.FC = () => {
           setLoading(false);
           return;
         }
-        q = query(logsCol, orderBy('timestamp', 'desc'), limit(1000));
+        // Limit query to 200 logs for search to save quota
+        q = query(logsCol, orderBy('timestamp', 'desc'), limit(200));
         setLastSearchQuery(debouncedSearchTerm);
       } else {
         setSearchBuffer(null);
@@ -169,6 +170,11 @@ export const UserActivitiesLog: React.FC = () => {
       return filteredLogs.filter(l => selectedLogs.has(l.id as string));
     }
     
+    // Optimization: If search is active and we have a buffer, use it instead of fetching 5000 new docs
+    if (debouncedSearchTerm && searchBuffer && searchBuffer.length > 0) {
+      return filteredLogs;
+    }
+
     setIsExporting(true);
     try {
       const logsCol = collection(db, 'user_activities');

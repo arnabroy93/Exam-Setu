@@ -47,12 +47,13 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStats = async (force = false) => {
-    // Check cache first
+    // Check cache first - use localStorage for cross-refresh persistence
+    const localCacheKey = 'admin_stats_persistent';
     if (!force) {
-      const cached = sessionStorage.getItem('admin_stats');
+      const cached = localStorage.getItem(localCacheKey);
       if (cached) {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 1800000) { // 30 minutes cache
+        if (Date.now() - timestamp < 900000) { // 15 minutes cache
           setStats(data);
           setLoading(false);
           return;
@@ -96,7 +97,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       };
 
       setStats(newStats);
-      sessionStorage.setItem('admin_stats', JSON.stringify({ data: newStats, timestamp: Date.now() }));
+      localStorage.setItem(localCacheKey, JSON.stringify({ data: newStats, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
