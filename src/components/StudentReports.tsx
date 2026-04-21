@@ -635,12 +635,23 @@ export const StudentReports: React.FC = () => {
       const manualTotal: number = (Object.values(manualGrades) as any[]).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
       const totalScore: number = autoScore + manualTotal;
 
+      const updatedAttempt: ExamAttempt = {
+        ...gradingAttempt,
+        manualGrades,
+        autoScore,
+        score: totalScore,
+        status: 'graded'
+      };
+
       await updateDoc(doc(db, 'attempts', gradingAttempt.id), {
         manualGrades,
         autoScore,
         score: totalScore,
         status: 'graded'
       });
+      
+      // Update local attempts state immediately
+      setAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? updatedAttempt : a));
       
       const student = students.find(s => s.uid === gradingAttempt.studentId);
       const action = gradingAttempt.status === 'graded' ? 'REGRADED_EXAM' : 'GRADED_EXAM';
@@ -996,6 +1007,18 @@ export const StudentReports: React.FC = () => {
             </div>
           </div>
           <div className="flex gap-3">
+            <div className="flex flex-col items-end justify-center px-4 border-r mr-2">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Calculated Total</p>
+              <p className="text-xl font-bold text-primary">
+                {(() => {
+                  const exam = exams.find(e => e.id === gradingAttempt.examId);
+                  const auto = gradingAttempt.autoScore !== undefined ? gradingAttempt.autoScore : (exam ? calculateAutoScore(exam.questions, gradingAttempt.answers) : 0);
+                  const manual = Object.values(manualGrades).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+                  const total = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+                  return `${auto + manual} / ${total}`;
+                })()}
+              </p>
+            </div>
             <Button variant="outline" onClick={() => setView('student-details')} disabled={isSavingGrades}>
               Cancel
             </Button>
