@@ -55,7 +55,7 @@ export const UserManagement: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const fetchUsers = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
+  const fetchUsers = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setLoading(true);
     try {
       const usersCol = collection(db, 'users');
@@ -64,7 +64,7 @@ export const UserManagement: React.FC = () => {
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
         const term = debouncedSearchTerm.trim();
-        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
+        if (!force && searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setLoading(false);
           setIsRefreshing(false);
           return;
@@ -90,7 +90,7 @@ export const UserManagement: React.FC = () => {
       if (direction === 'first' || !direction) {
         const cacheKey = 'total_users_count_persistent';
         const cached = localStorage.getItem(cacheKey);
-        if (cached && !isRefreshing) {
+        if (!force && cached && !isRefreshing) {
           try {
             const { count, timestamp } = JSON.parse(cached);
             if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
@@ -100,13 +100,13 @@ export const UserManagement: React.FC = () => {
             }
           } catch (e) {
             // Use static stats doc
-            const stats = await getSystemStats();
+            const stats = await getSystemStats(force);
             const count = stats ? stats.totalUsers : 0;
             setTotalUsersCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const stats = await getSystemStats();
+          const stats = await getSystemStats(force);
           const count = stats ? stats.totalUsers : 0;
           setTotalUsersCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
@@ -142,7 +142,7 @@ export const UserManagement: React.FC = () => {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchUsers('first');
+    fetchUsers('first', true);
   };
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {

@@ -29,7 +29,7 @@ export const UserActivitiesLog: React.FC = () => {
   const [searchBuffer, setSearchBuffer] = useState<UserActivityLog[] | null>(null);
   const [lastSearchQuery, setLastSearchQuery] = useState('');
 
-  const fetchLogs = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
+  const fetchLogs = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setLoading(true);
     try {
       const logsCol = collection(db, 'user_activities');
@@ -38,7 +38,7 @@ export const UserActivitiesLog: React.FC = () => {
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
         const term = debouncedSearchTerm.trim();
-        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
+        if (!force && searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setLoading(false);
           return;
         }
@@ -63,7 +63,7 @@ export const UserActivitiesLog: React.FC = () => {
       const cacheKey = 'total_logs_count_persistent';
       if (direction === 'first' || !direction) {
         const cached = localStorage.getItem(cacheKey);
-        if (cached && !loading) { 
+        if (!force && cached && !loading) { 
           try {
             const { count, timestamp } = JSON.parse(cached);
             if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
@@ -73,13 +73,13 @@ export const UserActivitiesLog: React.FC = () => {
             }
           } catch (e) {
             // Use static stats doc
-            const stats = await getSystemStats();
+            const stats = await getSystemStats(force);
             const count = stats ? stats.totalLogs : 0;
             setTotalLogsCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const stats = await getSystemStats();
+          const stats = await getSystemStats(force);
           const count = stats ? stats.totalLogs : 0;
           setTotalLogsCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
@@ -115,7 +115,7 @@ export const UserActivitiesLog: React.FC = () => {
 
   const handleRefresh = () => {
     setSearchBuffer(null);
-    fetchLogs('first');
+    fetchLogs('first', true);
   };
 
   const currentDisplayLogs = useMemo(() => {

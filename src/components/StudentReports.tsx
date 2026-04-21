@@ -89,7 +89,7 @@ export const StudentReports: React.FC = () => {
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [attemptsFetchedUids, setAttemptsFetchedUids] = useState<Set<string>>(new Set());
 
-  const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first') => {
+  const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setIsRefreshing(true);
     try {
       const studentsCol = collection(db, 'users');
@@ -99,7 +99,7 @@ export const StudentReports: React.FC = () => {
       if (debouncedSearchTerm) {
         const term = debouncedSearchTerm.trim();
         // If we have a buffer and the new term is a refinement, don't fetch from Firestore
-        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
+        if (!force && searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setIsRefreshing(false);
           setLoading(false);
           return;
@@ -127,7 +127,7 @@ export const StudentReports: React.FC = () => {
       const cacheKey = 'total_students_count_persistent';
       if (direction === 'first' || !direction) {
         const cached = localStorage.getItem(cacheKey);
-        if (cached && !isRefreshing) {
+        if (!force && cached && !isRefreshing) {
           try {
             const { count, timestamp } = JSON.parse(cached);
             if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
@@ -137,13 +137,13 @@ export const StudentReports: React.FC = () => {
             }
           } catch (e) {
             // Use the optimized stats document
-            const stats = await getSystemStats();
+            const stats = await getSystemStats(force);
             const count = stats ? stats.totalStudents : 0;
             setTotalStudentsCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const stats = await getSystemStats();
+          const stats = await getSystemStats(force);
           const count = stats ? stats.totalStudents : 0;
           setTotalStudentsCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
@@ -246,7 +246,7 @@ export const StudentReports: React.FC = () => {
   }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
-    fetchData('first');
+    fetchData('first', true);
   };
 
   const handleResetAttempt = async () => {

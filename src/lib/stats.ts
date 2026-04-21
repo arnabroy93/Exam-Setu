@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, getCountFromServer } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, collection, query, where, getCountFromServer, getDocFromServer } from 'firebase/firestore';
 
 export interface SystemStats {
   totalExams: number;
@@ -18,7 +18,7 @@ const STATS_DOC_PATH = 'system/stats';
 export async function getSystemStats(forceServer = false): Promise<SystemStats | null> {
   try {
     const statsDoc = doc(db, STATS_DOC_PATH);
-    const snap = await getDoc(statsDoc);
+    const snap = forceServer ? await getDocFromServer(statsDoc) : await getDoc(statsDoc);
     
     if (snap.exists()) {
       return snap.data() as SystemStats;

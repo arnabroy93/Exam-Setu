@@ -65,7 +65,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     setIsRefreshing(true);
     try {
       // Use the optimized stats document
-      let statsData = await getSystemStats();
+      let statsData = await getSystemStats(force);
       
       // Fallback for initial setup
       if (!statsData) {
