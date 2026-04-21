@@ -50,7 +50,7 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
   
   // 3. Sum manual grades
   const manualTotal = attempt.manualGrades 
-    ? (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0)
+    ? (Object.values(attempt.manualGrades) as any[]).reduce((sum, val) => sum + (Number(val) || 0), 0)
     : 0;
   
   const total = autoScore + manualTotal;
