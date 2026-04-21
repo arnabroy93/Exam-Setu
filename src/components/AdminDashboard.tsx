@@ -5,7 +5,7 @@ import { Exam, ExamAttempt, UserProfile } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw } from 'lucide-react';
+import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw, ShieldCheck, ClipboardList } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -72,19 +72,21 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         statsData = await seedSystemStats();
       }
 
-      const newStats = {
-        totalExams: statsData.totalExams,
-        activeExams: statsData.activeExams,
-        inactiveExams: statsData.totalExams - statsData.activeExams,
-        submittedAttempts: statsData.submittedAttempts,
-        totalStudents: statsData.totalStudents,
-        totalExaminers: statsData.totalExaminers,
-        activeStudents: statsData.activeExams > 0 ? statsData.activeStudents : 0,
-        totalUsers: statsData.totalUsers
-      };
+      if (statsData) {
+        const newStats = {
+          totalExams: statsData.totalExams || 0,
+          activeExams: statsData.activeExams || 0,
+          inactiveExams: (statsData.totalExams || 0) - (statsData.activeExams || 0),
+          submittedAttempts: statsData.submittedAttempts || 0,
+          totalStudents: statsData.totalStudents || 0,
+          totalExaminers: statsData.totalExaminers || 0,
+          activeStudents: statsData.activeStudents || 0,
+          totalUsers: statsData.totalUsers || 0
+        };
 
-      setStats(newStats);
-      localStorage.setItem(localCacheKey, JSON.stringify({ data: newStats, timestamp: Date.now() }));
+        setStats(newStats);
+        localStorage.setItem(localCacheKey, JSON.stringify({ data: newStats, timestamp: Date.now() }));
+      }
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
@@ -213,7 +215,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       if (cached) {
         try {
           const { data, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < 1800000) { // 30 mins cache
+          if (Date.now() - timestamp < 120000) { // 2 mins cache
             setRecentAttempts(data);
             return;
           }
@@ -276,15 +278,17 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   };
 
   const statCards = [
-    { id: 'active-exams', title: 'Active Exams', value: stats.activeExams, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'Currently published' },
-    { id: 'inactive-exams', title: 'Inactive Exams', value: stats.inactiveExams, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-500/10', desc: 'Drafts & Archived' },
-    { id: 'total-attempts', title: 'Submitted Attempts', value: stats.submittedAttempts, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Exams completed' },
-    { id: 'total-students', title: 'Total Students', value: stats.totalStudents, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Registered students' },
-    { id: 'active-students', title: 'Total Active Users', value: stats.activeStudents, icon: Activity, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Users currently active' },
-    { id: 'total-users', title: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-cyan-500', bg: 'bg-cyan-500/10', desc: 'All registered accounts' },
-    { id: 'total-examiners', title: 'Total Examiners', value: stats.totalExaminers, icon: Users, color: 'text-pink-500', bg: 'bg-pink-500/10', desc: 'Registered examiners' },
-    { id: 'total-exams', title: 'Exams Created', value: stats.totalExams, icon: FileText, color: 'text-orange-500', bg: 'bg-orange-500/10', desc: 'All created exams' },
-  ].sort((a, b) => a.title.localeCompare(b.title));
+    { id: 'total-exams', title: 'Total Exams', value: stats.totalExams, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'All time creations' },
+    { id: 'active-exams', title: 'Active Exams', value: stats.activeExams, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Currently published' },
+    { id: 'inactive-exams', title: 'Inactive Exams', value: stats.inactiveExams, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-500/10', desc: 'Drafts or Archived' },
+    { id: 'total-attempts', title: 'Exam Attempts', value: stats.submittedAttempts, icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-500/10', desc: 'Completed submissions' },
+    { id: 'active-students', title: 'Live Students', value: stats.activeStudents, icon: Activity, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Currently taking exams' },
+    { id: 'total-students', title: 'Students', value: stats.totalStudents, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Registered students' },
+    ...(profile?.role === 'admin' ? [
+      { id: 'total-examiners', title: 'Total Examiners', value: stats.totalExaminers, icon: ShieldCheck, color: 'text-pink-500', bg: 'bg-pink-500/10', desc: 'Management accounts' },
+      { id: 'total-users', title: 'Total Platform Users', value: stats.totalUsers, icon: ClipboardList, color: 'text-cyan-500', bg: 'bg-cyan-500/10', desc: 'All registered roles' },
+    ] : [])
+  ];
 
   const getDetailContent = () => {
     switch (selectedStat) {

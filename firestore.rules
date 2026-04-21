@@ -129,11 +129,16 @@ service cloud.firestore {
     }
 
     match /user_activities/{activityId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isExaminer();
       allow create: if isAuthenticated() && 
                     isOwner(request.resource.data.userId) && 
                     isValidUserActivity(request.resource.data);
       allow update, delete: if false; // Logs should be immutable
+    }
+
+    match /system/stats {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
     match /exams/{examId} {

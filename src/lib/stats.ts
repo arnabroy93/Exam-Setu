@@ -21,7 +21,19 @@ export async function getSystemStats(forceServer = false): Promise<SystemStats |
     const snap = forceServer ? await getDocFromServer(statsDoc) : await getDoc(statsDoc);
     
     if (snap.exists()) {
-      return snap.data() as SystemStats;
+      const data = snap.data();
+      // Ensure all fields exist with defaults to prevent NaN/errors in UI
+      return {
+        totalExams: data.totalExams || 0,
+        activeExams: data.activeExams || 0,
+        submittedAttempts: data.submittedAttempts || 0,
+        totalStudents: data.totalStudents || 0,
+        totalExaminers: data.totalExaminers || 0,
+        totalUsers: data.totalUsers || 0,
+        totalLogs: data.totalLogs || 0,
+        activeStudents: data.activeStudents || 0,
+        lastUpdated: data.lastUpdated || Date.now()
+      } as SystemStats;
     }
     return null;
   } catch (error) {

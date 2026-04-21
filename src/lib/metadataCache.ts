@@ -5,7 +5,7 @@ import { UserProfile, Exam } from '../types';
 class MetadataCache {
   private userCache: Record<string, { profile: UserProfile, timestamp: number }> = {};
   private examCache: Record<string, { exam: Exam, timestamp: number }> = {};
-  private readonly TTL = 30 * 60 * 1000; // 30 minutes
+  private readonly TTL = 10 * 60 * 1000; // 10 minutes
 
   async getUser(uid: string): Promise<UserProfile | null> {
     // 1. Memory Cache
@@ -119,7 +119,7 @@ class MetadataCache {
     if (cached) {
       try {
         const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 7200000) { // 2 hour cache
+        if (Date.now() - timestamp < 3600000) { // 1 hour cache
           return data;
         }
       } catch (e) {}
