@@ -5,6 +5,7 @@ import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
+import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
 import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -121,6 +122,7 @@ export const StudentReports: React.FC = () => {
         }
       }
 
+      // Check count persistence
       const cacheKey = 'total_students_count_persistent';
       if (direction === 'first' || !direction) {
         const cached = localStorage.getItem(cacheKey);
@@ -133,14 +135,15 @@ export const StudentReports: React.FC = () => {
               throw new Error('stale');
             }
           } catch (e) {
-            const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
-            const count = countSnap.data().count;
+            // Use the optimized stats document
+            const stats = await getSystemStats();
+            const count = stats ? stats.totalStudents : 0;
             setTotalStudentsCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const countSnap = await getCountFromServer(query(studentsCol, where('role', '==', 'student')));
-          const count = countSnap.data().count;
+          const stats = await getSystemStats();
+          const count = stats ? stats.totalStudents : 0;
           setTotalStudentsCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
@@ -250,6 +253,7 @@ export const StudentReports: React.FC = () => {
     setIsResettingAttempt(true);
     try {
       await deleteDoc(doc(db, 'attempts', attemptToReset));
+      await updateStat('submittedAttempts', -1);
       setAttemptToReset(null);
       if (selectedAttemptId === attemptToReset) {
         setSelectedAttemptId(null);

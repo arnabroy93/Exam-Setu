@@ -13,6 +13,7 @@ import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { useAuth } from '../lib/AuthContext';
 import { OperationType, handleFirestoreError } from '../lib/firebase';
 import { logUserActivity } from '../lib/activityLogger';
+import { updateStat } from '../lib/stats';
 
 export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> = ({ onBack, initialExam }) => {
   const { profile } = useAuth();
@@ -110,6 +111,21 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
 
     try {
       await setDoc(doc(db, 'exams', examId), newExam);
+
+      // Update counters if it's a new exam
+      if (!initialExam) {
+        await updateStat('totalExams', 1);
+        if (status === 'published') {
+          await updateStat('activeExams', 1);
+        }
+      } else if (initialExam.status !== status) {
+        // Handle status changes (Draft -> Published, etc.)
+        if (initialExam.status !== 'published' && status === 'published') {
+          await updateStat('activeExams', 1);
+        } else if (initialExam.status === 'published' && status !== 'published') {
+          await updateStat('activeExams', -1);
+        }
+      }
       
       const action = initialExam ? 'UPDATE_EXAM' : 'CREATE_EXAM';
       await logUserActivity(profile, action, `${initialExam ? 'Updated' : 'Created'} exam: ${title}`);

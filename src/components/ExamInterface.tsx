@@ -10,6 +10,7 @@ import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { useAuth } from '../lib/AuthContext';
 import { calculateAutoScore } from '../lib/gradingUtils';
 import { logUserActivity } from '../lib/activityLogger';
+import { updateStat } from '../lib/stats';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -196,6 +197,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       const finalAttempt = JSON.parse(JSON.stringify(attemptData));
 
       await setDoc(doc(db, 'attempts', attemptId), finalAttempt);
+      await updateStat('submittedAttempts', 1);
       console.log('Submission successful');
       
       if (profile) {

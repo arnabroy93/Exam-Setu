@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
+import { getSystemStats, seedSystemStats } from '../lib/stats';
 
 export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ onAction }) => {
   const { profile } = useAuth();
@@ -63,37 +64,23 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
 
     setIsRefreshing(true);
     try {
-      const examsCol = collection(db, 'exams');
-      const attemptsCol = collection(db, 'attempts');
-      const studentsCol = collection(db, 'users');
-
-      const [
-        totalExamsCount,
-        activeExamsCount,
-        submittedAttemptsCount,
-        totalStudentsCount,
-        totalExaminersCount,
-        activeStudentsCount,
-        totalUsersCount
-      ] = await Promise.all([
-        getCountFromServer(examsCol),
-        getCountFromServer(query(examsCol, where('status', '==', 'published'))),
-        getCountFromServer(query(attemptsCol, where('status', 'in', ['submitted', 'graded']))),
-        getCountFromServer(query(studentsCol, where('role', '==', 'student'))),
-        getCountFromServer(query(studentsCol, where('role', '==', 'examiner'))),
-        getCountFromServer(query(attemptsCol, where('status', '==', 'in-progress'))),
-        getCountFromServer(studentsCol)
-      ]);
+      // Use the optimized stats document
+      let statsData = await getSystemStats();
+      
+      // Fallback for initial setup
+      if (!statsData) {
+        statsData = await seedSystemStats();
+      }
 
       const newStats = {
-        totalExams: totalExamsCount.data().count,
-        activeExams: activeExamsCount.data().count,
-        inactiveExams: totalExamsCount.data().count - activeExamsCount.data().count,
-        submittedAttempts: submittedAttemptsCount.data().count,
-        totalStudents: totalStudentsCount.data().count,
-        totalExaminers: totalExaminersCount.data().count,
-        activeStudents: activeStudentsCount.data().count,
-        totalUsers: totalUsersCount.data().count
+        totalExams: statsData.totalExams,
+        activeExams: statsData.activeExams,
+        inactiveExams: statsData.totalExams - statsData.activeExams,
+        submittedAttempts: statsData.submittedAttempts,
+        totalStudents: statsData.totalStudents,
+        totalExaminers: statsData.totalExaminers,
+        activeStudents: statsData.activeExams > 0 ? statsData.activeStudents : 0,
+        totalUsers: statsData.totalUsers
       };
 
       setStats(newStats);

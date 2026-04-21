@@ -4,6 +4,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, User }
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
 import { logUserActivity } from './activityLogger';
+import { updateStat } from './stats';
 
 interface AuthContextType {
   user: User | null;
@@ -146,6 +147,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: Date.now(),
         };
         await setDoc(userDocRef, newProfile);
+        
+        // Update global counters atomically
+        await Promise.all([
+          updateStat('totalUsers', 1),
+          finalRole === 'student' ? updateStat('totalStudents', 1) : 
+          finalRole === 'examiner' ? updateStat('totalExaminers', 1) : Promise.resolve()
+        ]);
+
         setProfile(newProfile);
         localStorage.setItem(`acadex_profile_${firebaseUser.uid}`, JSON.stringify(newProfile));
         await logUserActivity(newProfile, 'REGISTER', `New user registered as ${finalRole}`);

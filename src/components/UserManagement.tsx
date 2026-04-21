@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
+import { updateStat, getSystemStats } from '../lib/stats';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useDebounce } from '../hooks/useDebounce';
@@ -97,14 +98,15 @@ export const UserManagement: React.FC = () => {
               throw new Error('stale');
             }
           } catch (e) {
-            const countSnap = await getCountFromServer(usersCol);
-            const count = countSnap.data().count;
+            // Use static stats doc
+            const stats = await getSystemStats();
+            const count = stats ? stats.totalUsers : 0;
             setTotalUsersCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const countSnap = await getCountFromServer(usersCol);
-          const count = countSnap.data().count;
+          const stats = await getSystemStats();
+          const count = stats ? stats.totalUsers : 0;
           setTotalUsersCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
@@ -144,12 +146,21 @@ export const UserManagement: React.FC = () => {
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     try {
+      const user = users.find(u => u.uid === userId);
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, { role: newRole });
       
-      const updatedUser = users.find(u => u.uid === userId);
-      if (currentUserProfile && updatedUser) {
-        await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${updatedUser.email} to ${newRole}`);
+      if (user && user.role !== newRole) {
+        // Update counters for the old role and the new role
+        if (user.role === 'student') await updateStat('totalStudents', -1);
+        if (user.role === 'examiner') await updateStat('totalExaminers', -1);
+        
+        if (newRole === 'student') await updateStat('totalStudents', 1);
+        if (newRole === 'examiner') await updateStat('totalExaminers', 1);
+      }
+      
+      if (currentUserProfile && user) {
+        await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${user.email} to ${newRole}`);
       }
     } catch (error) {
       console.error('Error updating user role:', error);
@@ -164,6 +175,15 @@ export const UserManagement: React.FC = () => {
       const user = users.find(u => u.uid === userToDelete);
       await deleteDoc(doc(db, 'users', userToDelete));
       
+      if (user) {
+        await updateStat('totalUsers', -1);
+        if (user.role === 'student') await updateStat('totalStudents', -1);
+        if (user.role === 'examiner') await updateStat('totalExaminers', -1);
+      }
+      
+      const cacheKey = 'total_users_count_persistent';
+      localStorage.removeItem(cacheKey);
+
       if (currentUserProfile && user) {
         await logUserActivity(currentUserProfile, 'DELETE_USER', `Deleted user account: ${user.email} (${user.displayName})`);
       }

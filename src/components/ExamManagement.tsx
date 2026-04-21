@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { updateStat } from '../lib/stats';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +78,17 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
     if (!examToDelete) return;
     
     try {
+      const exam = exams.find(e => e.id === examToDelete);
       await deleteDoc(doc(db, 'exams', examToDelete));
+      
+      // Update counters
+      if (exam) {
+        await updateStat('totalExams', -1);
+        if (exam.status === 'published') {
+          await updateStat('activeExams', -1);
+        }
+      }
+
       localStorage.removeItem('exam_management_list_persistent'); // Invalidate cache
       setExamToDelete(null);
       setIsDeleteDialogOpen(false);

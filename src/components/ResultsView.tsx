@@ -20,6 +20,17 @@ export const ResultsView: React.FC = () => {
   useEffect(() => {
     const fetchAttempts = async () => {
       if (!profile) return;
+      
+      const cacheKey = `student_results_${profile.uid}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 900000) { // 15 mins cache
+          setAttempts(data);
+          return;
+        }
+      }
+
       try {
         const q = query(
           collection(db, 'attempts'), 
@@ -30,15 +41,14 @@ export const ResultsView: React.FC = () => {
         const snapshot = await getDocs(q);
         const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
         
-        // Fetch all unique exam IDs needed
-        const examIds = Array.from(new Set(attemptsData.map(a => a.examId)));
-        
+        // Fetch enriched data
         const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
           const exam = await metadataCache.getExam(attempt.examId);
           return { ...attempt, exam: exam || undefined };
         }));
         
         setAttempts(enrichedAttempts);
+        localStorage.setItem(cacheKey, JSON.stringify({ data: enrichedAttempts, timestamp: Date.now() }));
       } catch (error) {
         console.error('Error fetching results:', error);
       }

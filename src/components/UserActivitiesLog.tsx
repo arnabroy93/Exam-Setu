@@ -10,6 +10,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getSystemStats } from '../lib/stats';
 
 export const UserActivitiesLog: React.FC = () => {
   const [logs, setLogs] = useState<UserActivityLog[]>([]);
@@ -57,6 +58,7 @@ export const UserActivitiesLog: React.FC = () => {
         }
       }
 
+      // Check count persistence
       const cacheKey = 'total_logs_count_persistent';
       if (direction === 'first' || !direction) {
         const cached = localStorage.getItem(cacheKey);
@@ -69,14 +71,15 @@ export const UserActivitiesLog: React.FC = () => {
               throw new Error('stale');
             }
           } catch (e) {
-            const countSnap = await getCountFromServer(logsCol);
-            const count = countSnap.data().count;
+            // Use static stats doc
+            const stats = await getSystemStats();
+            const count = stats ? stats.totalLogs : 0;
             setTotalLogsCount(count);
             localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
           }
         } else {
-          const countSnap = await getCountFromServer(logsCol);
-          const count = countSnap.data().count;
+          const stats = await getSystemStats();
+          const count = stats ? stats.totalLogs : 0;
           setTotalLogsCount(count);
           localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
         }
