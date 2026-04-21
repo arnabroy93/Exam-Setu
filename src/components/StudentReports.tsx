@@ -97,16 +97,17 @@ export const StudentReports: React.FC = () => {
 
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
+        const term = debouncedSearchTerm.trim();
         // If we have a buffer and the new term is a refinement, don't fetch from Firestore
-        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setIsRefreshing(false);
           setLoading(false);
           return;
         }
 
-        // Fetch new buffer - reduced from 1000 to 200 to save quota
-        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(200));
-        setLastSearchQuery(debouncedSearchTerm);
+        // Fetch new buffer - increased to 1000 for 'near-perfect' search in sub-1k environments
+        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
+        setLastSearchQuery(term);
       } else {
         // Not searching, clear buffer
         setSearchBuffer(null);
@@ -392,10 +393,11 @@ export const StudentReports: React.FC = () => {
 
   const filteredStudents = useMemo(() => {
     if (debouncedSearchTerm && searchBuffer) {
-      const term = debouncedSearchTerm.toLowerCase();
+      const term = debouncedSearchTerm.trim().toLowerCase();
+      if (!term) return searchBuffer;
       return searchBuffer.filter(s => 
-        s.displayName.toLowerCase().includes(term) ||
-        s.email.toLowerCase().includes(term)
+        (s.displayName || '').toLowerCase().includes(term) ||
+        (s.email || '').toLowerCase().includes(term)
       );
     }
     return students;

@@ -37,13 +37,14 @@ export const UserActivitiesLog: React.FC = () => {
 
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
-        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+        const term = debouncedSearchTerm.trim();
+        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setLoading(false);
           return;
         }
-        // Limit query to 200 logs for search to save quota
-        q = query(logsCol, orderBy('timestamp', 'desc'), limit(200));
-        setLastSearchQuery(debouncedSearchTerm);
+        // Limit query to 1000 logs for search to save quota
+        q = query(logsCol, orderBy('timestamp', 'desc'), limit(1000));
+        setLastSearchQuery(term);
       } else {
         setSearchBuffer(null);
         setLastSearchQuery('');
@@ -118,12 +119,12 @@ export const UserActivitiesLog: React.FC = () => {
   };
 
   const currentDisplayLogs = useMemo(() => {
-    if (debouncedSearchTerm && searchBuffer) {
-      const term = debouncedSearchTerm.toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
+    if (term && searchBuffer) {
       const filtered = searchBuffer.filter(log => 
-        log.userName.toLowerCase().includes(term) ||
-        log.userEmail.toLowerCase().includes(term) ||
-        log.action.toLowerCase().includes(term)
+        (log.userName || '').toLowerCase().includes(term) ||
+        (log.userEmail || '').toLowerCase().includes(term) ||
+        (log.action || '').toLowerCase().includes(term)
       );
       const start = (currentPage - 1) * itemsPerPage;
       return filtered.slice(start, start + itemsPerPage);
@@ -132,12 +133,12 @@ export const UserActivitiesLog: React.FC = () => {
   }, [logs, searchBuffer, debouncedSearchTerm, currentPage, itemsPerPage]);
 
   const totalFilteredCount = useMemo(() => {
-    if (debouncedSearchTerm && searchBuffer) {
-      const term = debouncedSearchTerm.toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
+    if (term && searchBuffer) {
       return searchBuffer.filter(log => 
-        log.userName.toLowerCase().includes(term) ||
-        log.userEmail.toLowerCase().includes(term) ||
-        log.action.toLowerCase().includes(term)
+        (log.userName || '').toLowerCase().includes(term) ||
+        (log.userEmail || '').toLowerCase().includes(term) ||
+        (log.action || '').toLowerCase().includes(term)
       ).length;
     }
     return totalLogsCount;

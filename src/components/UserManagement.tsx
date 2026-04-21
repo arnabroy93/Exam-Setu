@@ -63,14 +63,15 @@ export const UserManagement: React.FC = () => {
 
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
-        if (searchBuffer && debouncedSearchTerm.startsWith(lastSearchQuery) && lastSearchQuery !== '') {
+        const term = debouncedSearchTerm.trim();
+        if (searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setLoading(false);
           setIsRefreshing(false);
           return;
         }
-        // Limit search fetch to 200 to save quota
-        q = query(usersCol, orderBy('createdAt', 'desc'), limit(200));
-        setLastSearchQuery(debouncedSearchTerm);
+        // Limit search fetch to 1000 to save quota while providing 'near-perfect' search
+        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000));
+        setLastSearchQuery(term);
       } else {
         setSearchBuffer(null);
         setLastSearchQuery('');
@@ -233,16 +234,19 @@ export const UserManagement: React.FC = () => {
   };
 
   const filteredUsers = useMemo(() => {
+    const term = (debouncedSearchTerm || searchTerm).trim().toLowerCase();
+    if (!term) return users;
+    
     if (debouncedSearchTerm && searchBuffer) {
-      const term = debouncedSearchTerm.toLowerCase();
       return searchBuffer.filter(user => 
-        user.displayName.toLowerCase().includes(term) ||
-        user.email.toLowerCase().includes(term)
+        (user.displayName || '').toLowerCase().includes(term) ||
+        (user.email || '').toLowerCase().includes(term)
       );
     }
+    
     return users.filter(user => 
-      user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      (user.displayName || '').toLowerCase().includes(term) ||
+      (user.email || '').toLowerCase().includes(term)
     );
   }, [users, searchBuffer, debouncedSearchTerm, searchTerm]);
 
