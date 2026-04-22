@@ -89,6 +89,7 @@ export const StudentReports: React.FC = () => {
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [attemptsFetchedUids, setAttemptsFetchedUids] = useState<Set<string>>(new Set());
   const [isDownloadingResponses, setIsDownloadingResponses] = useState(false);
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
 
   const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setIsRefreshing(true);
@@ -325,12 +326,29 @@ export const StudentReports: React.FC = () => {
     
     setIsPublishing(true);
     try {
+      // 1. Fetch ALL relevant attempts for selected students (since we might not have them in local state)
+      let targetAttempts: ExamAttempt[] = [];
+      const studentIds = selectedStudentIds;
+      
+      for(let i=0; i<studentIds.length; i+=30) {
+        const batchIds = studentIds.slice(i, i+30);
+        const atmptSnap = await getDocs(query(
+          collection(db, 'attempts'), 
+          where('studentId', 'in', batchIds)
+        ));
+        targetAttempts = [...targetAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+      }
+
       const batch = writeBatch(db);
-      const attemptsToUpdate = attempts.filter(a => 
-        selectedStudentIds.includes(a.studentId) && 
+      const attemptsToUpdate = targetAttempts.filter(a => 
         (a.status === 'submitted' || a.status === 'graded') &&
         (publish ? !a.isPublished : a.isPublished)
       );
+
+      if (attemptsToUpdate.length === 0) {
+        alert('No attempts found to ' + (publish ? 'publish' : 'unpublish') + '.');
+        return;
+      }
 
       attemptsToUpdate.forEach(attempt => {
         const attemptRef = doc(db, 'attempts', attempt.id);
@@ -338,6 +356,13 @@ export const StudentReports: React.FC = () => {
       });
 
       await batch.commit();
+      
+      // Update local state for visible items
+      setAttempts(prev => {
+        const updatedIds = new Set(attemptsToUpdate.map(a => a.id));
+        return prev.map(a => updatedIds.has(a.id) ? { ...a, isPublished: publish } : a);
+      });
+      
       setSelectedStudentIds([]);
     } catch (error) {
       console.error(`Error ${publish ? 'publishing' : 'unpublishing'} scores:`, error);
@@ -436,11 +461,37 @@ export const StudentReports: React.FC = () => {
     return 1;
   }, [debouncedSearchTerm, filteredStudents.length, searchBuffer, itemsPerPage]);
 
-  const toggleSelectAll = () => {
-    if (selectedStudentIds.length === filteredStudents.length) {
+  const toggleSelectAll = async () => {
+    // If search is active, select all from buffer
+    if (debouncedSearchTerm && searchBuffer) {
+      const filtered = searchBuffer.filter(s => 
+        (s.displayName || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (s.email || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+      );
+      
+      if (selectedStudentIds.length >= filtered.length) {
+        setSelectedStudentIds([]);
+      } else {
+        setSelectedStudentIds(filtered.map(s => s.uid));
+      }
+      return;
+    }
+
+    // Global select all for non-search (requires fetching all IDs if count is large)
+    if (selectedStudentIds.length >= totalStudentsCount && totalStudentsCount > 0) {
       setSelectedStudentIds([]);
     } else {
-      setSelectedStudentIds(filteredStudents.map(s => s.uid));
+      setIsSelectingAll(true);
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(5000));
+        const snap = await getDocs(q);
+        const allIds = snap.docs.map(doc => doc.id);
+        setSelectedStudentIds(allIds);
+      } catch (error) {
+        console.error('Error selecting all students:', error);
+      } finally {
+        setIsSelectingAll(false);
+      }
     }
   };
 
@@ -599,13 +650,28 @@ export const StudentReports: React.FC = () => {
     setIsDownloadingResponses(true);
     
     try {
-      // 1. Get student profiles
-      const targetStudents = filteredStudents.filter(s => selectedStudentIds.includes(s.uid));
+      // 1. Get student profiles (Filter from search buffer or fetch missing)
+      let targetStudents: UserProfile[] = [];
+      const studentIds = selectedStudentIds;
+      
+      // Try to get from local stores first
+      const locallyAvailable = (searchBuffer || students).filter(s => studentIds.includes(s.uid));
+      const locallyAvailableIds = new Set(locallyAvailable.map(s => s.uid));
+      const missingIds = studentIds.filter(id => !locallyAvailableIds.has(id));
+      
+      targetStudents = [...locallyAvailable];
+      
+      // Fetch missing profiles
+      if (missingIds.length > 0) {
+        for(let i=0; i<missingIds.length; i+=30) {
+          const batchIds = missingIds.slice(i, i+30);
+          const userSnap = await getDocs(query(collection(db, 'users'), where('__name__', 'in', batchIds)));
+          targetStudents = [...targetStudents, ...userSnap.docs.map(d => ({uid: d.id, ...d.data() as any} as UserProfile))];
+        }
+      }
       
       // 2. Fetch all attempts for these students
       let allAttempts: ExamAttempt[] = [];
-      const studentIds = targetStudents.map(s => s.uid);
-      
       for(let i=0; i<studentIds.length; i+=30) {
         const batchIds = studentIds.slice(i, i+30);
         const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
@@ -1293,8 +1359,9 @@ export const StudentReports: React.FC = () => {
                 <TableRow>
                   <TableHead className="w-[50px]">
                     <Checkbox 
-                      checked={selectedStudentIds.length === filteredStudents.length && filteredStudents.length > 0}
+                      checked={selectedStudentIds.length > 0 && (debouncedSearchTerm ? selectedStudentIds.length >= filteredStudents.length : selectedStudentIds.length >= totalStudentsCount)}
                       onCheckedChange={toggleSelectAll}
+                      className={isSelectingAll ? 'opacity-50 pointer-events-none' : ''}
                     />
                   </TableHead>
                   <TableHead>Student Name</TableHead>
