@@ -341,7 +341,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
               a.id.toLowerCase().includes(searchLower)
             );
           }),
-          columns: ['Student', 'Exam', 'Status', 'Score', 'Date', 'Actions'],
+          columns: ['Student', 'Exam', 'Status', 'Score', 'Graded By', 'Date', 'Actions'],
           renderRow: (attempt: ExamAttempt) => {
             const student = students.find(s => s.uid === attempt.studentId);
             const exam = exams.find(e => e.id === attempt.examId);
@@ -357,6 +357,16 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                   </Badge>
                 </TableCell>
                 <TableCell>{scoreDisplay}</TableCell>
+                <TableCell>
+                  {attempt.gradedByName ? (
+                    <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
+                      <Users className="w-3 h-3" />
+                      {attempt.gradedByName}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">System</span>
+                  )}
+                </TableCell>
                 <TableCell>{new Date(attempt.endTime || attempt.startTime).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setAttemptToReset(attempt.id)}>
