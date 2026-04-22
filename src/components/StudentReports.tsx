@@ -721,7 +721,7 @@ export const StudentReports: React.FC = () => {
             'Result': result,
             'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
             'Max Marks': q.points || 0,
-            'Graded By': attempt.gradedByName || 'System',
+            'Graded By': attempt.gradedByName || (attempt.manualGrades && Object.keys(attempt.manualGrades).length > 0 ? 'Examiner (Legacy)' : 'System'),
             'Attempt Date': new Date(attempt.endTime || attempt.startTime).toLocaleString()
           });
         });
@@ -997,10 +997,10 @@ export const StudentReports: React.FC = () => {
                                 <Clock className="w-4 h-4" />
                                 {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
                               </div>
-                              {attempt.gradedByName && (
+                              {(attempt.gradedByName || (attempt.status === 'graded' && attempt.manualGrades && Object.keys(attempt.manualGrades).length > 0)) && (
                                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground bg-primary/5 px-2 py-0.5 rounded border border-primary/10">
                                   <User className="w-4 h-4 text-primary" />
-                                  <span>Graded By: <span className="font-semibold text-primary">{attempt.gradedByName}</span></span>
+                                  <span>Graded By: <span className="font-semibold text-primary">{attempt.gradedByName || 'Examiner (Legacy)'}</span></span>
                                 </div>
                               )}
                               <Badge variant="outline" className={`${attemptPercentage >= 40 ? 'text-green-600 border-green-200 bg-green-50' : 'text-destructive border-destructive/20 bg-destructive/5'} font-bold`}>

@@ -363,6 +363,11 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                       <Users className="w-3 h-3" />
                       {attempt.gradedByName}
                     </div>
+                  ) : (attempt.manualGrades && Object.keys(attempt.manualGrades).length > 0) ? (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium italic">
+                      <Users className="w-3 h-3" />
+                      Examiner (Legacy)
+                    </div>
                   ) : (
                     <span className="text-xs text-muted-foreground italic">System</span>
                   )}
