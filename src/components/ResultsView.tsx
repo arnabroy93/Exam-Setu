@@ -198,6 +198,14 @@ export const ResultsView: React.FC = () => {
                             </p>
                           </div>
                         )}
+                        {(q.type === 'short' || q.type === 'long') && q.correctAnswer && (
+                          <div className="p-2 rounded bg-primary/5 border border-primary/10">
+                            <p className="text-[10px] font-bold text-primary uppercase mb-1">Model Answer / Rubric:</p>
+                            <p className="text-primary font-medium whitespace-pre-wrap">
+                              {q.correctAnswer as string}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

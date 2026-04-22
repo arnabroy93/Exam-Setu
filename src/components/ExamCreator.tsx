@@ -449,6 +449,21 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                   </Button>
                 </div>
               )}
+
+              {(q.type === 'short' || q.type === 'long') && (
+                <div className="space-y-2 mt-4">
+                  <Label className="text-primary font-bold">Recommended/Model Answer (For Grading Reference)</Label>
+                  <Textarea 
+                    value={q.correctAnswer as string || ''} 
+                    onChange={(e) => updateQuestion(q.id, { correctAnswer: e.target.value })} 
+                    placeholder="Enter the correct or model answer for this subjective question..."
+                    className="bg-muted/30"
+                  />
+                  <p className="text-[10px] text-muted-foreground italic">
+                    This answer will be shown to students in their reports and helps you (the examiner) while manually grading.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

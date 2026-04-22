@@ -717,7 +717,7 @@ export const StudentReports: React.FC = () => {
             'Question Type': q.type.toUpperCase(),
             'Question Text': q.text,
             'Student Response': Array.isArray(studentAnswer) ? studentAnswer.join(', ') : (studentAnswer || 'No response'),
-            'Correct Answer(s)': Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A'),
+            'Model Answer/Correct Key': Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A'),
             'Result': result,
             'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
             'Max Marks': q.points || 0,
