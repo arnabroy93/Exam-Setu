@@ -123,6 +123,12 @@ export const ResultsView: React.FC = () => {
                     <span className="text-muted-foreground">Total Questions:</span>
                     <span className="font-medium">{exam?.questions.length || 0}</span>
                   </div>
+                  {selectedAttempt.gradedByName && (
+                    <div className="flex justify-between text-sm pt-2 border-t mt-2">
+                      <span className="text-muted-foreground">Graded By:</span>
+                      <span className="font-bold text-primary">{selectedAttempt.gradedByName}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

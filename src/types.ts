@@ -59,6 +59,8 @@ export interface ExamAttempt {
   autoScore?: number;
   isPublished?: boolean;
   feedback?: string;
+  gradedBy?: string;
+  gradedByName?: string;
   suspiciousActivity: ActivityLog[];
   totalPossibleMarks?: number;
 }

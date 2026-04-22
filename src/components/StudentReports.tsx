@@ -721,6 +721,7 @@ export const StudentReports: React.FC = () => {
             'Result': result,
             'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
             'Max Marks': q.points || 0,
+            'Graded By': attempt.gradedByName || 'System',
             'Attempt Date': new Date(attempt.endTime || attempt.startTime).toLocaleString()
           });
         });
@@ -798,14 +799,18 @@ export const StudentReports: React.FC = () => {
         manualGrades,
         autoScore,
         score: totalScore,
-        status: 'graded'
+        status: 'graded',
+        gradedBy: profile?.uid,
+        gradedByName: profile?.displayName || 'Unknown'
       };
 
       await updateDoc(doc(db, 'attempts', gradingAttempt.id), {
         manualGrades,
         autoScore,
         score: totalScore,
-        status: 'graded'
+        status: 'graded',
+        gradedBy: profile?.uid,
+        gradedByName: profile?.displayName || 'Unknown'
       });
       
       // Update local attempts state immediately
@@ -992,6 +997,12 @@ export const StudentReports: React.FC = () => {
                                 <Clock className="w-4 h-4" />
                                 {new Date(attempt.endTime || attempt.startTime).toLocaleString()}
                               </div>
+                              {attempt.gradedByName && (
+                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground bg-primary/5 px-2 py-0.5 rounded border border-primary/10">
+                                  <User className="w-4 h-4 text-primary" />
+                                  <span>Graded By: <span className="font-semibold text-primary">{attempt.gradedByName}</span></span>
+                                </div>
+                              )}
                               <Badge variant="outline" className={`${attemptPercentage >= 40 ? 'text-green-600 border-green-200 bg-green-50' : 'text-destructive border-destructive/20 bg-destructive/5'} font-bold`}>
                                 {attemptPercentage.toFixed(1)}%
                               </Badge>
