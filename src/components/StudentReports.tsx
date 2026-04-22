@@ -6,7 +6,7 @@ import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
-import { calculateAutoScore, calculateTotalObtained } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -88,6 +88,7 @@ export const StudentReports: React.FC = () => {
   const [isResettingAttempt, setIsResettingAttempt] = useState(false);
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [attemptsFetchedUids, setAttemptsFetchedUids] = useState<Set<string>>(new Set());
+  const [isDownloadingResponses, setIsDownloadingResponses] = useState(false);
 
   const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setIsRefreshing(true);
@@ -230,16 +231,15 @@ export const StudentReports: React.FC = () => {
     }
   }, [students, searchBuffer, currentPage, debouncedSearchTerm, itemsPerPage, attemptsFetchedUids]);
 
-  // Lazy fetch exams only when needed for detail view or grading
   useEffect(() => {
     const loadExams = async () => {
-      if ((view === 'student-details' || view === 'grading') && exams.length === 0) {
+      if (exams.length === 0) {
         const examsData = await metadataCache.getExamsList();
         setExams(examsData);
       }
     };
     loadExams();
-  }, [view, exams.length]);
+  }, [exams.length]);
 
   useEffect(() => {
     fetchData('first');
@@ -594,6 +594,98 @@ export const StudentReports: React.FC = () => {
     else exportToPDF(data, 'All Students Performance Report', 'All_Students_Report');
   };
 
+  const handleResponseDownload = async () => {
+    if (selectedStudentIds.length === 0) return;
+    setIsDownloadingResponses(true);
+    
+    try {
+      // 1. Get student profiles
+      const targetStudents = filteredStudents.filter(s => selectedStudentIds.includes(s.uid));
+      
+      // 2. Fetch all attempts for these students
+      let allAttempts: ExamAttempt[] = [];
+      const studentIds = targetStudents.map(s => s.uid);
+      
+      for(let i=0; i<studentIds.length; i+=30) {
+        const batchIds = studentIds.slice(i, i+30);
+        const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
+        allAttempts = [...allAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+      }
+
+      // 3. Filter for submitted/graded attempts
+      const validAttempts = allAttempts.filter(a => a.status === 'submitted' || a.status === 'graded');
+      
+      // 4. Ensure we have exams
+      let currentExams = exams;
+      if (currentExams.length === 0) {
+        currentExams = await metadataCache.getExamsList();
+        setExams(currentExams);
+      }
+
+      // 5. Build report rows
+      const reportRows: any[] = [];
+      
+      validAttempts.forEach(attempt => {
+        const student = targetStudents.find(s => s.uid === attempt.studentId);
+        const exam = currentExams.find(e => e.id === attempt.examId);
+        
+        if (!student || !exam) return;
+        
+        exam.questions.forEach((q, idx) => {
+          const studentAnswer = attempt.answers[q.id];
+          const isCorrect = isAnswerCorrect(q, studentAnswer);
+          const manualGrade = attempt.manualGrades?.[q.id];
+          
+          let result = '';
+          if (q.type === 'short' || q.type === 'long') {
+            result = attempt.status === 'graded' ? 'Manual' : 'Pending';
+          } else {
+            result = isCorrect ? 'Correct' : 'Incorrect';
+          }
+
+          reportRows.push({
+            'Student Name': student.displayName,
+            'Student Email': student.email,
+            'Exam Title': exam.title,
+            'Question No': idx + 1,
+            'Question Type': q.type.toUpperCase(),
+            'Question Text': q.text,
+            'Student Response': Array.isArray(studentAnswer) ? studentAnswer.join(', ') : (studentAnswer || 'No response'),
+            'Correct Answer(s)': Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A'),
+            'Result': result,
+            'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
+            'Max Marks': q.points || 0,
+            'Attempt Date': new Date(attempt.endTime || attempt.startTime).toLocaleString()
+          });
+        });
+      });
+
+      if (reportRows.length === 0) {
+        alert('No examination responses found for the selected students.');
+        return;
+      }
+
+      // 6. Export to Excel
+      const worksheet = XLSX.utils.json_to_sheet(reportRows);
+      // Autofit columns (basic attempt)
+      const wscols = [
+        {wch: 20}, {wch: 25}, {wch: 20}, {wch: 10}, {wch: 15}, {wch: 40}, {wch: 40}, {wch: 40}, {wch: 15}, {wch: 15}, {wch: 10}, {wch: 20}
+      ];
+      worksheet['!cols'] = wscols;
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Detailed Responses');
+      
+      XLSX.writeFile(workbook, `Student_Responses_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    } catch (error) {
+      console.error('Error downloading responses:', error);
+      alert('Failed to generate response report.');
+    } finally {
+      setIsDownloadingResponses(false);
+    }
+  };
+
   const handleStudentClick = (student: UserProfile) => {
     setSelectedStudent(student);
     setView('student-details');
@@ -705,10 +797,10 @@ export const StudentReports: React.FC = () => {
             <div className="h-8 w-[1px] bg-border" />
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                {selectedStudent.displayName[0]}
+                {selectedStudent.displayName?.[0] || 'S'}
               </div>
               <div>
-                <h2 className="text-2xl font-bold">{selectedStudent.displayName}</h2>
+                <h2 className="text-2xl font-bold">{selectedStudent.displayName || 'Anonymous'}</h2>
                 <p className="text-sm text-muted-foreground">{selectedStudent.email}</p>
               </div>
             </div>
@@ -1151,6 +1243,20 @@ export const StudentReports: React.FC = () => {
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Selected
               </Button>
+              <Button 
+                size="sm" 
+                variant="default"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white" 
+                onClick={handleResponseDownload} 
+                disabled={isDownloadingResponses}
+              >
+                {isDownloadingResponses ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4 mr-2" />
+                )}
+                Response Download
+              </Button>
             </div>
           )}
           <Button variant="outline" size="sm" onClick={() => handleExportAll('excel')}>
@@ -1202,10 +1308,22 @@ export const StudentReports: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mainPaginatedStudents.length === 0 ? (
+                {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      No students found matching your search.
+                    <TableCell colSpan={9} className="text-center py-20">
+                      <div className="flex flex-col items-center gap-2">
+                        <RefreshCw className="w-8 h-8 animate-spin text-primary/40" />
+                        <p className="text-sm text-muted-foreground font-medium">Loading reports...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : mainPaginatedStudents.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2 opacity-60">
+                        <User className="w-10 h-10 mb-2" />
+                        <p className="font-medium">No students found matching your search.</p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1222,10 +1340,10 @@ export const StudentReports: React.FC = () => {
                         <TableCell onClick={() => handleStudentClick(student)}>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                              {student.displayName[0]}
+                              {student.displayName?.[0] || 'S'}
                             </div>
                             <div>
-                              <p className="font-medium">{student.displayName}</p>
+                              <p className="font-medium">{student.displayName || 'Anonymous'}</p>
                               <p className="text-xs text-muted-foreground">{student.email}</p>
                             </div>
                           </div>
