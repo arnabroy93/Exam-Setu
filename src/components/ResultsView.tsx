@@ -17,50 +17,6 @@ export const ResultsView: React.FC = () => {
   const [attempts, setAttempts] = useState<(ExamAttempt & { exam?: Exam })[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState<(ExamAttempt & { exam?: Exam }) | null>(null);
 
-  // Attribution Resolver for Results View (Legacy Recovery)
-  useEffect(() => {
-    const resolveAttributions = async () => {
-      if (attempts.length === 0 || !profile) return;
-      
-      const missing = attempts.filter(a => a.status === 'graded' && !a.gradedByName);
-      if (missing.length === 0) return;
-
-      try {
-        const logsRef = collection(db, 'user_activities');
-        // We look for grading logs. Since we can't filter by student name efficiently in 'details', 
-        // we fetch latest logs and match in-memory.
-        const q = query(
-          logsRef, 
-          where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']),
-          orderBy('timestamp', 'desc'),
-          limit(200)
-        );
-        const logsSnap = await getDocs(q);
-        const logs = logsSnap.docs.map(d => d.data());
-
-        for (const attempt of missing) {
-          const exam = attempt.exam;
-          if (exam) {
-            const match = logs.find(log => 
-              log.details.includes(exam.title) && 
-              log.details.includes(profile.displayName)
-            );
-
-            if (match) {
-              // Local update only for student view to prevent excessive writes from students
-              // If Admin views it, the permanent updateDoc happens there.
-              setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, gradedByName: match.userName } : a));
-              if (selectedAttempt?.id === attempt.id) {
-                setSelectedAttempt(prev => prev ? ({ ...prev, gradedByName: match.userName }) : null);
-              }
-            }
-          }
-        }
-      } catch (e) {}
-    };
-    resolveAttributions();
-  }, [attempts, profile, selectedAttempt?.id]);
-
   useEffect(() => {
     const fetchAttempts = async () => {
       if (!profile) return;
@@ -167,12 +123,12 @@ export const ResultsView: React.FC = () => {
                     <span className="text-muted-foreground">Total Questions:</span>
                     <span className="font-medium">{exam?.questions.length || 0}</span>
                   </div>
-                  {selectedAttempt.gradedByName || (selectedAttempt.status === 'graded' && selectedAttempt.manualGrades && Object.keys(selectedAttempt.manualGrades).length > 0) ? (
+                  {(selectedAttempt.status === 'graded') && (
                     <div className="flex justify-between text-sm pt-2 border-t mt-2">
                       <span className="text-muted-foreground">Graded By:</span>
-                      <span className="font-bold text-primary">{selectedAttempt.gradedByName || 'Examiner (Legacy)'}</span>
+                      <span className="font-bold text-primary">System</span>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </div>
 
