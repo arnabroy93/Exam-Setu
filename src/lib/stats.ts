@@ -16,14 +16,29 @@ export interface SystemStats {
 const STATS_DOC_PATH = 'system/stats';
 
 export async function getSystemStats(forceServer = false): Promise<SystemStats | null> {
+  const CACHE_KEY = 'acadex_system_stats_cache';
+  
+  // 1. Check local cache first unless forceServer
+  if (!forceServer) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { data, timestamp } = JSON.parse(cached);
+        // Use cache if it's less than 5 minutes old
+        if (Date.now() - timestamp < 300000) {
+          return data;
+        }
+      } catch (e) {}
+    }
+  }
+
   try {
     const statsDoc = doc(db, STATS_DOC_PATH);
     const snap = forceServer ? await getDocFromServer(statsDoc) : await getDoc(statsDoc);
     
     if (snap.exists()) {
       const data = snap.data();
-      // Ensure all fields exist with defaults to prevent NaN/errors in UI
-      return {
+      const stats: SystemStats = {
         totalExams: data.totalExams || 0,
         activeExams: data.activeExams || 0,
         submittedAttempts: data.submittedAttempts || 0,
@@ -33,10 +48,24 @@ export async function getSystemStats(forceServer = false): Promise<SystemStats |
         totalLogs: data.totalLogs || 0,
         activeStudents: data.activeStudents || 0,
         lastUpdated: data.lastUpdated || Date.now()
-      } as SystemStats;
+      };
+
+      // Update cache
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ data: stats, timestamp: Date.now() }));
+      return stats;
     }
+
+    // Fallback to old cache if network fails but document exists in cache
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) return JSON.parse(cached).data;
+
     return null;
-  } catch (error) {
+  } catch (error: any) {
+    // Silently handle quota errors and return cached data if available
+    if (error.message?.includes('Quota exceeded')) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) return JSON.parse(cached).data;
+    }
     console.error('Error fetching system stats:', error);
     return null;
   }

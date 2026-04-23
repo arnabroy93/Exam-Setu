@@ -25,14 +25,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        // 1. Session Storage is fastest and freshest for current session
         const sessionKey = `acadex_session_profile_${firebaseUser.uid}`;
+        const localKey = `acadex_profile_${firebaseUser.uid}`;
+        
+        // 1. Session Storage check (Fresh session)
         const sessionCached = sessionStorage.getItem(sessionKey);
         if (sessionCached) {
           try {
             const { profile: p, timestamp } = JSON.parse(sessionCached);
-            // If session cache is fresh (within 1 hour), use it and stop
-            if (Date.now() - timestamp < 3600000) {
+            // Session cache good for 4 hours
+            if (Date.now() - timestamp < 14400000) {
               setProfile(p);
               setLoading(false);
               return;
@@ -40,19 +42,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (e) {}
         }
 
-        // 2. Local Storage as secondary cache
-        const localKey = `acadex_profile_${firebaseUser.uid}`;
+        // 2. Local Storage check (Secondary)
         const cached = localStorage.getItem(localKey);
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
             setProfile(parsed);
-            // We set profile but continue to get fresh data from server once to be safe
-            // However, we set loading to false to unblock UI
-            setLoading(false); 
           } catch (e) {}
         }
 
+        // 3. Document fetch (Only if necessary)
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
@@ -65,18 +64,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfile(null);
           }
         } catch (error: any) {
-          console.error('Error fetching profile in auth state change:', error);
-          // Standard error handling...
           if (error.message?.includes('Quota exceeded')) {
-            const cached = localStorage.getItem(`acadex_profile_${firebaseUser.uid}`);
-            if (cached) {
-              try {
-                setProfile(JSON.parse(cached));
-              } catch (e) {
-                setProfile(null);
-              }
-            }
+            console.warn('Quota reached. Using cached profile.');
+            // Profile is already set from localStorage check above if available
           } else {
+            console.error('Error fetching profile:', error);
             setProfile(null);
           }
         }

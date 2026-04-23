@@ -242,6 +242,81 @@ export const StudentReports: React.FC = () => {
     loadExams();
   }, [exams.length]);
 
+  // Effect to resolve missing grader attribution (Legacy Repair)
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const resolveAttributions = async () => {
+      if (!selectedStudent || view !== 'student-details' || attempts.length === 0) return;
+
+      const missing = attempts.filter(
+        a => a.studentId === selectedStudent.uid && 
+        a.status === 'graded' && 
+        !a.gradedByName && 
+        !resolvedIds.has(a.id)
+      );
+
+      if (missing.length === 0) return;
+
+      // Mark as processed to avoid loops
+      const currentResolved = new Set(resolvedIds);
+      missing.forEach(a => currentResolved.add(a.id));
+      setResolvedIds(currentResolved);
+
+      try {
+        // 1. Try resolving via gradedBy UID first (if it exists but name is missing)
+        for (const attempt of missing) {
+          if (attempt.gradedBy) {
+            const grader = await metadataCache.getUser(attempt.gradedBy);
+            if (grader) {
+              await updateDoc(doc(db, 'attempts', attempt.id), { gradedByName: grader.displayName });
+              setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, gradedByName: grader.displayName } : a));
+              continue;
+            }
+          }
+        }
+
+        // 2. Deep scan via Activity Logs for truly legacy data (no UID, no Name)
+        const trulyLegacy = missing.filter(a => !a.gradedBy);
+        if (trulyLegacy.length > 0) {
+          const logsRef = collection(db, 'user_activities');
+          const q = query(
+            logsRef, 
+            where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']),
+            orderBy('timestamp', 'desc'),
+            limit(300)
+          );
+          const logsSnap = await getDocs(q);
+          const logs = logsSnap.docs.map(d => d.data());
+
+          for (const attempt of trulyLegacy) {
+            const exam = exams.find(e => e.id === attempt.examId);
+            if (!exam) continue;
+
+            // Heuristic match: Log details contain Exam Title AND Student Name
+            const match = logs.find(log => 
+              log.details.includes(exam.title) && 
+              log.details.includes(selectedStudent.displayName)
+            );
+
+            if (match) {
+              await updateDoc(doc(db, 'attempts', attempt.id), {
+                gradedBy: match.userId,
+                gradedByName: match.userName
+              });
+              setAttempts(prev => prev.map(a => 
+                a.id === attempt.id ? { ...a, gradedBy: match.userId, gradedByName: match.userName } : a
+              ));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Attribution resolution failed:", err);
+      }
+    };
+
+    resolveAttributions();
+  }, [selectedStudent, view, exams, attempts, resolvedIds]);
+
   useEffect(() => {
     fetchData('first');
   }, [debouncedSearchTerm]);
@@ -688,6 +763,34 @@ export const StudentReports: React.FC = () => {
         setExams(currentExams);
       }
 
+      // 4.5 Resolve legacy attributions for export
+      const missingAttrAttempts = validAttempts.filter(a => a.status === 'graded' && !a.gradedByName);
+      if (missingAttrAttempts.length > 0) {
+        try {
+          // A. Resolve via UID first
+          for (const attempt of missingAttrAttempts) {
+            if (attempt.gradedBy) {
+              const grader = await metadataCache.getUser(attempt.gradedBy);
+              if (grader) attempt.gradedByName = grader.displayName;
+            }
+          }
+          // B. Resolve via Logs for truly legacy (no UID)
+          const stillMissing = missingAttrAttempts.filter(a => !a.gradedByName);
+          if (stillMissing.length > 0) {
+            const logsSnap = await getDocs(query(collection(db, 'user_activities'), where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']), orderBy('timestamp', 'desc'), limit(500)));
+            const logs = logsSnap.docs.map(d => d.data());
+            stillMissing.forEach(attempt => {
+              const student = targetStudents.find(s => s.uid === attempt.studentId);
+              const exam = currentExams.find(e => e.id === attempt.examId);
+              if (student && exam) {
+                const match = logs.find(log => log.details.includes(exam.title) && log.details.includes(student.displayName));
+                if (match) attempt.gradedByName = match.userName;
+              }
+            });
+          }
+        } catch (e) {}
+      }
+
       // 5. Build report rows
       const reportRows: any[] = [];
       
@@ -698,7 +801,7 @@ export const StudentReports: React.FC = () => {
         if (!student || !exam) return;
         
         exam.questions.forEach((q, idx) => {
-          const studentAnswer = attempt.answers[q.id];
+          const studentAnswer = attempt.answers?.[q.id];
           const isCorrect = isAnswerCorrect(q, studentAnswer);
           const manualGrade = attempt.manualGrades?.[q.id];
           
@@ -708,6 +811,19 @@ export const StudentReports: React.FC = () => {
           } else {
             result = isCorrect ? 'Correct' : 'Incorrect';
           }
+
+          // Calculate marks for this attempt
+          const mcqMarks = attempt.autoScore !== undefined 
+            ? attempt.autoScore 
+            : calculateAutoScore(exam.questions, attempt.answers || {});
+          
+          const subjectiveMarks = attempt.manualGrades 
+            ? (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0)
+            : 0;
+          
+          const totalMarksObtained = calculateTotalObtained(attempt, exam);
+          const examFullMarks = exam.questions.reduce((sum, question) => sum + (question.points || 0), 0);
+          const overallPercentage = examFullMarks > 0 ? ((totalMarksObtained / examFullMarks) * 100).toFixed(2) + '%' : '0%';
 
           reportRows.push({
             'Student Name': student.displayName,
@@ -721,6 +837,11 @@ export const StudentReports: React.FC = () => {
             'Result': result,
             'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
             'Max Marks': q.points || 0,
+            'MCQ Marks': mcqMarks,
+            'Subjective Marks': subjectiveMarks,
+            'Total Marks Obtained': totalMarksObtained,
+            'Exam Full Marks': examFullMarks,
+            'Overall Percentage': overallPercentage,
             'Graded By': attempt.gradedByName || (attempt.manualGrades && Object.keys(attempt.manualGrades).length > 0 ? 'Examiner (Legacy)' : 'System'),
             'Attempt Date': new Date(attempt.endTime || attempt.startTime).toLocaleString()
           });
@@ -736,7 +857,8 @@ export const StudentReports: React.FC = () => {
       const worksheet = XLSX.utils.json_to_sheet(reportRows);
       // Autofit columns (basic attempt)
       const wscols = [
-        {wch: 20}, {wch: 25}, {wch: 20}, {wch: 10}, {wch: 15}, {wch: 40}, {wch: 40}, {wch: 40}, {wch: 15}, {wch: 15}, {wch: 10}, {wch: 20}
+        {wch: 20}, {wch: 25}, {wch: 20}, {wch: 10}, {wch: 15}, {wch: 40}, {wch: 40}, {wch: 40}, {wch: 15}, {wch: 15}, {wch: 10}, 
+        {wch: 12}, {wch: 15}, {wch: 20}, {wch: 15}, {wch: 18}, {wch: 20}, {wch: 20}
       ];
       worksheet['!cols'] = wscols;
 

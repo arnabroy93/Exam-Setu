@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, getDocs, getCountFromServer, doc, deleteDoc, orderBy, limit, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, getCountFromServer, doc, deleteDoc, orderBy, limit, getDoc, updateDoc } from 'firebase/firestore';
 import { Exam, ExamAttempt, UserProfile } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -47,6 +47,39 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const [isResetting, setIsResetting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Attribution Resolver for Admin Dashboard Table
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const resolveAttributions = async () => {
+      const missing = attempts.filter(a => a.status === 'graded' && !a.gradedByName && !resolvedIds.has(a.id));
+      if (missing.length === 0) return;
+
+      const currentResolved = new Set(resolvedIds);
+      missing.forEach(a => currentResolved.add(a.id));
+      setResolvedIds(currentResolved);
+
+      try {
+        const logsRef = collection(db, 'user_activities');
+        const q = query(logsRef, where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']), orderBy('timestamp', 'desc'), limit(300));
+        const logsSnap = await getDocs(q);
+        const logs = logsSnap.docs.map(d => d.data());
+
+        for (const attempt of missing) {
+          const student = students.find(s => s.uid === attempt.studentId);
+          const exam = exams.find(e => e.id === attempt.examId);
+          if (student && exam) {
+            const match = logs.find(log => log.details.includes(exam.title) && log.details.includes(student.displayName));
+            if (match) {
+              await updateDoc(doc(db, 'attempts', attempt.id), { gradedBy: match.userId, gradedByName: match.userName });
+              setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, gradedBy: match.userId, gradedByName: match.userName } : a));
+            }
+          }
+        }
+      } catch (e) {}
+    };
+    resolveAttributions();
+  }, [attempts, exams, students, resolvedIds]);
+
   const fetchStats = async (force = false) => {
     // Check cache first - use localStorage for cross-refresh persistence
     const localCacheKey = 'admin_stats_persistent';
@@ -67,8 +100,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       // Use the optimized stats document
       let statsData = await getSystemStats(force);
       
-      // Fallback for initial setup
-      if (!statsData) {
+      // If we got nothing from server/cache, fallback for initial setup
+      if (!statsData && force) {
         statsData = await seedSystemStats();
       }
 
@@ -86,6 +119,12 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
 
         setStats(newStats);
         localStorage.setItem(localCacheKey, JSON.stringify({ data: newStats, timestamp: Date.now() }));
+      } else {
+        // If everything failed, try to check local temporary cache one last time
+        const lastResort = localStorage.getItem(localCacheKey);
+        if (lastResort) {
+          setStats(JSON.parse(lastResort).data);
+        }
       }
     } catch (error) {
       console.error('Error fetching stats:', error);
