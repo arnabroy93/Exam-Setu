@@ -8,14 +8,101 @@ import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CheckCircle, XCircle, Clock, AlertTriangle, ChevronLeft, FileText, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, ChevronLeft, FileText, ShieldCheck, CheckCircle2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export const ResultsView: React.FC = () => {
   const { profile } = useAuth();
   const [attempts, setAttempts] = useState<(ExamAttempt & { exam?: Exam })[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState<(ExamAttempt & { exam?: Exam }) | null>(null);
+
+  const handleExportPDF = () => {
+    if (!selectedAttempt || !profile) return;
+    const exam = selectedAttempt.exam;
+    if (!exam) return;
+
+    const doc = new jsPDF();
+    const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+    const currentScore = calculateTotalObtained(selectedAttempt, exam);
+    const percentage = examFullMarks > 0 ? (currentScore / examFullMarks) * 100 : 0;
+
+    // Header
+    doc.setFontSize(20);
+    doc.setTextColor(41, 128, 185);
+    doc.text('Examination Performance Report', 105, 15, { align: 'center' });
+    
+    doc.setDrawColor(200, 200, 200);
+    doc.line(20, 20, 190, 20);
+
+    // Student Info
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Student Name: ${profile.displayName}`, 20, 30);
+    doc.text(`Student Email: ${profile.email}`, 20, 37);
+    doc.text(`Exam Title: ${exam.title}`, 20, 44);
+    doc.text(`Date Taken: ${new Date(selectedAttempt.startTime).toLocaleString()}`, 20, 51);
+
+    // Summary Box
+    doc.setFillColor(245, 247, 250);
+    doc.rect(20, 58, 170, 25, 'F');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text('PERFORMANCE SUMMARY', 25, 65);
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Total Score: ${currentScore} / ${examFullMarks}`, 25, 75);
+    doc.text(`Percentage: ${percentage.toFixed(2)}%`, 85, 75);
+    doc.text(`Status: ${selectedAttempt.status.toUpperCase()}`, 145, 75);
+
+    // Question Details Table
+    const tableData = exam.questions.map((q, idx) => {
+      const studentAnswer = selectedAttempt.answers[q.id];
+      const isCorrect = isAnswerCorrect(q, studentAnswer);
+      const manualMarks = selectedAttempt.manualGrades?.[q.id];
+      
+      let marksAwarded = '0';
+      if (q.type === 'short' || q.type === 'long') {
+        marksAwarded = manualMarks !== undefined ? manualMarks.toString() : 'Pending';
+      } else {
+        marksAwarded = isCorrect ? q.points.toString() : '0';
+      }
+
+      const answerText = Array.isArray(studentAnswer) ? studentAnswer.join(', ') : (studentAnswer || 'No response');
+      const correctText = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A');
+
+      return [
+        idx + 1,
+        q.text,
+        answerText,
+        correctText,
+        marksAwarded,
+        q.points
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 90,
+      head: [['#', 'Question', 'Your Answer', 'Correct Answer / Rubric', 'Marks', 'Max']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 45 },
+        4: { cellWidth: 15, halign: 'center' },
+        5: { cellWidth: 15, halign: 'center' }
+      },
+      styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
+      margin: { top: 20 }
+    });
+
+    doc.save(`${profile.displayName}_${exam.title.replace(/\s+/g, '_')}_Report.pdf`);
+  };
 
   useEffect(() => {
     const fetchAttempts = async () => {
@@ -71,6 +158,12 @@ export const ResultsView: React.FC = () => {
             Back to Results
           </Button>
           <h3 className="text-2xl font-bold">Examination Report</h3>
+          <div className="ml-auto">
+            <Button onClick={handleExportPDF} className="gap-2 bg-primary hover:bg-primary/90">
+              <Download className="w-4 h-4" />
+              Download Report PDF
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
