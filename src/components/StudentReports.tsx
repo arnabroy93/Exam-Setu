@@ -399,50 +399,72 @@ export const StudentReports: React.FC = () => {
   const handleBatchPublishStatus = async (publish: boolean) => {
     if (selectedStudentIds.length === 0) return;
     
-    setIsPublishing(true);
+    setIsPublishing(publish ? 'bulk-publish' : 'bulk-unpublish');
     try {
-      // 1. Fetch ALL relevant attempts for selected students (since we might not have them in local state)
-      let targetAttempts: ExamAttempt[] = [];
+      // 1. Fetch relevant attempts in parallel batches (chunked to 50 concurrent requests at a time to avoid browser/network throttling)
       const studentIds = selectedStudentIds;
+      const allResults: any[] = [];
+      const CHUNK_SIZE = 50; // Parallel fetch chunks
       
+      // Prepare all batch IDs
+      const allBatchIds: string[][] = [];
       for(let i=0; i<studentIds.length; i+=30) {
-        const batchIds = studentIds.slice(i, i+30);
-        const atmptSnap = await getDocs(query(
-          collection(db, 'attempts'), 
-          where('studentId', 'in', batchIds)
-        ));
-        targetAttempts = [...targetAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+        allBatchIds.push(studentIds.slice(i, i+30));
       }
 
-      const batch = writeBatch(db);
-      const attemptsToUpdate = targetAttempts.filter(a => 
-        (a.status === 'submitted' || a.status === 'graded') &&
-        (publish ? !a.isPublished : a.isPublished)
-      );
+      // Execute fetch in chunks of 50 concurrent batches
+      for (let i = 0; i < allBatchIds.length; i += CHUNK_SIZE) {
+        const chunk = allBatchIds.slice(i, i + CHUNK_SIZE);
+        const promises = chunk.map(batchIds => 
+          getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)))
+        );
+        const results = await Promise.all(promises);
+        allResults.push(...results);
+      }
+
+      const attemptsToUpdate: ExamAttempt[] = [];
+      allResults.forEach(snap => {
+        snap.docs.forEach(d => {
+          const a = { id: d.id, ...d.data() as any } as ExamAttempt;
+          if ((a.status === 'submitted' || a.status === 'graded') && (publish ? !a.isPublished : a.isPublished)) {
+            attemptsToUpdate.push(a);
+          }
+        });
+      });
 
       if (attemptsToUpdate.length === 0) {
         alert('No attempts found to ' + (publish ? 'publish' : 'unpublish') + '.');
+        setSelectedStudentIds([]);
         return;
       }
 
-      attemptsToUpdate.forEach(attempt => {
-        const attemptRef = doc(db, 'attempts', attempt.id);
-        batch.update(attemptRef, { isPublished: publish });
-      });
-
-      await batch.commit();
+      // 2. Commit updates in chunks of 500 (Firestore limit)
+      for (let i = 0; i < attemptsToUpdate.length; i += 500) {
+        const currentBatchUpdates = attemptsToUpdate.slice(i, i + 500);
+        const batch = writeBatch(db);
+        currentBatchUpdates.forEach(attempt => {
+          batch.update(doc(db, 'attempts', attempt.id), { 
+            isPublished: publish,
+            lastModified: Date.now() // Audit trail
+          });
+        });
+        await batch.commit();
+      }
       
-      // Update local state for visible items
+      // 3. Optimized Local State Update
+      const updatedIds = new Set(attemptsToUpdate.map(a => a.id));
       setAttempts(prev => {
-        const updatedIds = new Set(attemptsToUpdate.map(a => a.id));
+        // Use a more performant way to update large arrays
         return prev.map(a => updatedIds.has(a.id) ? { ...a, isPublished: publish } : a);
       });
       
       setSelectedStudentIds([]);
+      alert(`Successfully ${publish ? 'published' : 'unpublished'} scores for ${attemptsToUpdate.length} attempts.`);
     } catch (error) {
       console.error(`Error ${publish ? 'publishing' : 'unpublishing'} scores:`, error);
+      alert(`Failed to ${publish ? 'publish' : 'unpublish'} scores. Some records might not have updated.`);
     } finally {
-      setIsPublishing(false);
+      setIsPublishing(null);
     }
   };
 
@@ -883,9 +905,12 @@ export const StudentReports: React.FC = () => {
   const handleTogglePublish = async (attempt: ExamAttempt) => {
     setIsPublishing(attempt.id);
     try {
+      const newStatus = !attempt.isPublished;
       await updateDoc(doc(db, 'attempts', attempt.id), {
-        isPublished: !attempt.isPublished
+        isPublished: newStatus
       });
+      // Update local state for immediate feedback
+      setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, isPublished: newStatus } : a));
     } catch (error) {
       console.error('Error toggling publish status:', error);
       alert('Failed to update publish status.');
@@ -1166,8 +1191,11 @@ export const StudentReports: React.FC = () => {
                                     size="sm"
                                     className={!attempt.isPublished ? "bg-green-600 hover:bg-green-700 flex-1 sm:flex-none" : "flex-1 sm:flex-none"}
                                     onClick={() => handleTogglePublish(attempt)}
-                                    disabled={isPublishing === attempt.id}
+                                    disabled={!!isPublishing}
                                   >
+                                    {isPublishing === attempt.id ? (
+                                      <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                                    ) : null}
                                     {attempt.isPublished ? 'Unpublish' : 'Publish'}
                                   </Button>
                                 </>
@@ -1430,12 +1458,20 @@ export const StudentReports: React.FC = () => {
           {selectedStudentIds.length > 0 && (
             <div className="flex items-center gap-2 mr-4 border-r pr-4">
               <span className="text-xs font-medium text-muted-foreground">{selectedStudentIds.length} selected</span>
-              <Button size="sm" onClick={() => handleBatchPublishStatus(true)} disabled={isPublishing}>
-                <Send className="w-4 h-4 mr-2" />
+              <Button size="sm" onClick={() => handleBatchPublishStatus(true)} disabled={!!isPublishing}>
+                {isPublishing === 'bulk-publish' ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 mr-2" />
+                )}
                 Publish
               </Button>
-              <Button size="sm" variant="outline" onClick={() => handleBatchPublishStatus(false)} disabled={isPublishing || isDeleting}>
-                <XCircle className="w-4 h-4 mr-2" />
+              <Button size="sm" variant="outline" onClick={() => handleBatchPublishStatus(false)} disabled={!!isPublishing || isDeleting}>
+                {isPublishing === 'bulk-unpublish' ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4 mr-2" />
+                )}
                 Unpublish
               </Button>
               <Button size="sm" variant="destructive" onClick={confirmDeleteSelected} disabled={isPublishing || isDeleting}>
