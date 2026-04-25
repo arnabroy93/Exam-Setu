@@ -12,6 +12,73 @@ export const LoginPage: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
   const [error, setError] = useState<string | null>(null);
 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleEmailAuth = async (isSignUp: boolean) => {
+    setError(null);
+    const cleanEmail = email.trim();
+    if (!cleanEmail) return setError('Please enter your email address');
+    
+    const isAuthorized = cleanEmail.endsWith('@anudip.org') || 
+                        ['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail);
+                        
+    if (!isAuthorized) {
+      return setError('Only @anudip.org emails are allowed.');
+    }
+
+    const { supabase } = await import('../lib/supabase');
+    
+    try {
+      if (isSignUp) {
+        if (password.length < 6) return setError('Password must be at least 6 characters');
+        const { error: signUpError, data } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
+          }
+        });
+        if (signUpError) throw signUpError;
+        if (!data.session) setError('Signup successful! If you have email confirmation enabled in Supabase, please check your inbox. Otherwise, you can now Sign In.');
+      } else {
+        if (!password) return setError('Please enter your password');
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (signInError) throw signInError;
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleMagicLink = async () => {
+    setError(null);
+    const cleanEmail = email.trim();
+    if (!cleanEmail) return setError('Please enter your email address');
+    
+    if (!(cleanEmail.endsWith('@anudip.org') || ['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail))) {
+      return setError('Only @anudip.org emails are allowed.');
+    }
+
+    const { supabase } = await import('../lib/supabase');
+    const { error } = await supabase.auth.signInWithOtp({ 
+      email: cleanEmail,
+      options: { 
+        emailRedirectTo: `${window.location.origin}/`,
+        data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
+      }
+    });
+    
+    if (error) {
+      setError(error.message.toLowerCase().includes('rate limit') ? 'Too many attempts! Please wait.' : error.message);
+    } else {
+      setError('Success! Check your email inbox for the magic link.');
+    }
+  };
+
   const handleLogin = async () => {
     setError(null);
     try {
@@ -81,58 +148,69 @@ export const LoginPage: React.FC = () => {
               <div className="mt-6 space-y-4">
                   <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-xl space-y-4">
                     <div>
-                      <h3 className="font-semibold text-lg text-primary">Email Login / Sign Up</h3>
+                      <h3 className="font-semibold text-lg text-primary">Direct Login</h3>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Enter your @anudip.org email. We'll send you a secure magic link, no passwords needed!
+                        Use your @anudip.org email with a password or magic link.
                       </p>
                     </div>
                     
-                    <div className="space-y-3">
-                      <input
-                        type="email"
-                        id="email-input"
-                        placeholder="name@anudip.org"
-                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="name@anudip.org"
+                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground ml-1">Password (for direct login)</label>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <Button 
+                          onClick={() => handleEmailAuth(false)}
+                          disabled={loading}
+                          className="h-11 font-semibold"
+                        >
+                          Sign In
+                        </Button>
+                        <Button 
+                          onClick={() => handleEmailAuth(true)}
+                          disabled={loading}
+                          variant="outline"
+                          className="h-11 font-semibold bg-background"
+                        >
+                          Sign Up
+                        </Button>
+                      </div>
+
+                      <div className="relative py-2">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs">
+                          <span className="bg-primary/5 px-2 text-muted-foreground font-medium italic">or use magic link</span>
+                        </div>
+                      </div>
+
                       <Button 
+                        variant="ghost"
+                        onClick={handleMagicLink}
                         disabled={loading} 
-                        className="w-full h-12 text-base font-semibold"
-                        onClick={async () => {
-                          const emailInput = document.getElementById('email-input') as HTMLInputElement;
-                          const email = emailInput?.value?.trim();
-                          if (!email) return setError('Please enter your email address');
-                          
-                          // Check if it's anudip.org or allowed emails
-                          const isAuthorized = email.endsWith('@anudip.org') || 
-                                              email === 'arnabredmi3sprime@gmail.com' || 
-                                              email === 'arnabsukanya@gmail.com';
-                                              
-                          if (!isAuthorized) {
-                            return setError('Only @anudip.org emails are allowed to sign in.');
-                          }
-                          
-                          const { supabase } = await import('../lib/supabase');
-                          // Send Magic Link OTP
-                          const { error } = await supabase.auth.signInWithOtp({ 
-                            email: email,
-                            options: { 
-                              emailRedirectTo: `${window.location.origin}/`,
-                              data: { full_name: email.split('@')[0] }
-                            }
-                          });
-                          
-                          if (error) {
-                            if (error.message.toLowerCase().includes('rate limit')) {
-                               setError('Too many attempts! Please wait a few minutes before trying again.');
-                            } else {
-                               setError(error.message);
-                            }
-                          } else {
-                            setError('Success! Check your email inbox for the magic link (it might be in spam).');
-                          }
-                        }}
+                        className="w-full h-10 text-primary font-medium hover:bg-primary/10"
                       >
-                        Send Magic Link
+                        Send Magic Link to Email
                       </Button>
                     </div>
                   </div>
