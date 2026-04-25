@@ -39,7 +39,7 @@ export const LoginPage: React.FC = () => {
             data: { 
               full_name: cleanEmail.split('@')[0], 
               role: selectedRole,
-              password_reset_required: password === 'Default1234' && cleanEmail !== 'arnab.roy@anudip.org'
+              password_reset_required: password === 'Default1234' && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)
             }
           }
         });
@@ -53,12 +53,16 @@ export const LoginPage: React.FC = () => {
         });
         
         if (signInError) {
-          // If login fails with invalid credentials and it's the default password, 
-          // attempt auto-signup for authorized emails (except Arnab)
-          if (signInError.message.includes('Invalid login credentials') && 
-              password === 'Default1234' && 
-              cleanEmail !== 'arnab.roy@anudip.org') {
-            
+          const errMsg = signInError.message.toLowerCase();
+          const isUnconfirmed = errMsg.includes('email not confirmed');
+          const isInvalid = errMsg.includes('invalid login credentials') || 
+                           errMsg.includes('invalid credentials') ||
+                           errMsg.includes('user not found') ||
+                           errMsg.includes('no user found') ||
+                           isUnconfirmed;
+          
+          // If login fails (including unconfirmed email) and it's the default password for an authorized domain
+          if (isInvalid && password === 'Default1234' && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)) {
             const { error: signUpError, data: signUpData } = await supabase.auth.signUp({
               email: cleanEmail,
               password,
@@ -71,14 +75,17 @@ export const LoginPage: React.FC = () => {
               }
             });
 
-            if (signUpError) throw signUpError;
+            if (signUpError) {
+              if (signUpError.message.toLowerCase().includes('already registered')) {
+                return setError('This account is already registered with a different password. If you forgot your password, please use the Magic Link option or contact your administrator to reset it to the default.');
+              }
+              throw signUpError;
+            }
 
             if (signUpData.session) {
-              // Successfully signed up and logged in (email confirm disabled)
-              return;
+              return; // Logged in
             } else {
-              // Account created but needs verification (email confirm enabled)
-              return setError('Account initialized with default password! Please check your email for verification link, then Sign In.');
+              return setError('Account initialized! Please check your email for a verification link to activate your direct login access.');
             }
           }
           throw signInError;

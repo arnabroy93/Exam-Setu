@@ -18,7 +18,8 @@ export const PasswordResetBarrier: React.FC<PasswordResetBarrierProps> = ({ chil
   const [error, setError] = useState<string | null>(null);
 
   // Check if reset is required based on app_metadata or user_metadata
-  const isArnab = user?.email === 'arnab.roy@anudip.org';
+  const arnabEmails = ['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'];
+  const isArnab = arnabEmails.includes(user?.email || '');
   const isResetRequired = !isArnab && (
     user?.app_metadata?.password_reset_required === true || 
     user?.user_metadata?.password_reset_required === true
