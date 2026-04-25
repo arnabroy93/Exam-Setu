@@ -186,7 +186,7 @@ export const UserManagement: React.FC = () => {
     try {
       // Use the RPC function created in the SQL Step
       const { error } = await supabase.rpc('reset_user_password', {
-        target_user_id: userToReset.uid || (userToReset as any).id,
+        target_user_id: String(userToReset.uid || (userToReset as any).id),
         new_password: 'Default1234'
       });
 

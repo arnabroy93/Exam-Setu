@@ -157,13 +157,12 @@ export const LoginPage: React.FC = () => {
                       </Button>
                     </div>
 
-                    {/* Separator */}
-                    <div className="relative py-2">
+                      <div className="relative py-2">
                       <div className="absolute inset-0 flex items-center">
                         <span className="w-full border-t" />
                       </div>
                       <div className="relative flex justify-center text-xs">
-                        <span className="bg-primary/5 px-2 text-muted-foreground font-bold uppercase">or option</span>
+                        <span className="bg-primary/5 px-2 text-muted-foreground font-bold uppercase">OR</span>
                       </div>
                     </div>
 
@@ -174,6 +173,17 @@ export const LoginPage: React.FC = () => {
                         <p className="text-sm text-muted-foreground mt-1">
                           Use your @anudip.org email with a password
                         </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="name@anudip.org"
+                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        />
                       </div>
 
                       <div className="space-y-2">
