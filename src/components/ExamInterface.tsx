@@ -120,24 +120,27 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       const attempt: any = {
         id: attemptId,
         examId: exam.id,
-        studentId: profile.uid,
+        studentId: profile.uid || (profile as any).id,
         answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         status: 'in-progress',
         suspiciousActivity: logs,
-        updatedAt: Date.now(),
       };
 
       try {
         // Remove any undefined values that might crash
         const cleanAttempt = JSON.parse(JSON.stringify(attempt));
-        await supabase.from('attempts').upsert(cleanAttempt, { onConflict: 'id' });
+        const { error: syncError } = await supabase.from('attempts').upsert(cleanAttempt, { onConflict: 'id' });
         
-        // Update sync ref
-        lastSyncRef.current = {
-          answers: sanitizedAnswers,
-          logsCount: logs.length
-        };
+        if (syncError) {
+          console.error('Sync error:', syncError);
+        } else {
+          // Update sync ref
+          lastSyncRef.current = {
+            answers: sanitizedAnswers,
+            logsCount: logs.length
+          };
+        }
       } catch (error) {
         console.error('Error syncing attempt:', error);
       }
@@ -173,30 +176,32 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       const attemptData: any = {
         id: attemptId,
         examId: exam.id,
-        studentId: profile?.uid || 'anonymous',
+        studentId: profile?.uid || (profile as any)?.id || 'anonymous',
         answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
         autoScore: autoScore,
-        totalPossibleMarks,
         suspiciousActivity: logs.map(log => ({
           timestamp: log.timestamp || Date.now(),
           type: log.type || 'unknown',
           details: log.details || ''
         })),
+        duration: Math.floor((Date.now() - (endTime ? (endTime - exam.duration * 60 * 1000) : Date.now())) / 1000 / 60)
       };
 
       if (!hasSubjective) {
         attemptData.score = autoScore;
       }
 
-      console.log('Submitting attempt to Firestore:', attemptId);
+      console.log('Submitting attempt to Supabase:', attemptId);
       
       // Final safety check: JSON stringify/parse removes all undefined values
       const finalAttempt = JSON.parse(JSON.stringify(attemptData));
 
-      await supabase.from('attempts').upsert(finalAttempt, { onConflict: 'id' });
+      const { error: upsertError } = await supabase.from('attempts').upsert(finalAttempt, { onConflict: 'id' });
+      if (upsertError) throw upsertError;
+      
       await updateStat('submittedAttempts', 1);
       console.log('Submission successful');
       

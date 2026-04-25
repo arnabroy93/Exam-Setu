@@ -89,25 +89,26 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
     const examId = initialExam?.id || Math.random().toString(36).substr(2, 9);
     const totalPossibleMarks = questions.reduce((sum, q) => sum + (q.points || 0), 0);
 
-    const newExam: Exam = {
+    const newExam: any = {
       id: examId,
       title,
       description,
       instructions,
       duration,
       questions,
-      createdBy: initialExam?.createdBy || profile?.uid || '',
+      createdBy: initialExam?.createdBy || profile?.uid || (profile as any)?.id || '',
       status: status,
       createdAt: initialExam?.createdAt || Date.now(),
       settings: settings,
-      totalPossibleMarks,
+      updatedAt: Date.now()
     };
 
     if (startTime) newExam.startTime = new Date(startTime).getTime();
     if (endTime) newExam.endTime = new Date(endTime).getTime();
 
     try {
-      await supabase.from('exams').upsert(newExam as any, { onConflict: 'id' });
+      const { error: upsertError } = await supabase.from('exams').upsert(newExam, { onConflict: 'id' });
+      if (upsertError) throw upsertError;
 
       // Update counters if it's a new exam
       if (!initialExam) {

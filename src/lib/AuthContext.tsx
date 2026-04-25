@@ -32,35 +32,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const handleUserSession = async (supabaseUser: any) => {
-    setUser(supabaseUser);
-    if (supabaseUser) {
-      const sessionKey = `acadex_session_profile_${supabaseUser.id}`;
-      const localKey = `acadex_profile_${supabaseUser.id}`;
-      
-      const sessionCached = sessionStorage.getItem(sessionKey);
-      if (sessionCached) {
-        try {
-          const { profile: p, timestamp } = JSON.parse(sessionCached);
-          if (Date.now() - timestamp < 14400000) {
-            setProfile(p);
-            setLoading(false);
-            return;
-          }
-        } catch (e) {}
-      }
+    try {
+      setUser(supabaseUser);
+      if (supabaseUser) {
+        const sessionKey = `acadex_session_profile_${supabaseUser.id}`;
+        const localKey = `acadex_profile_${supabaseUser.id}`;
+        
+        const sessionCached = sessionStorage.getItem(sessionKey);
+        if (sessionCached) {
+          try {
+            const { profile: p, timestamp } = JSON.parse(sessionCached);
+            if (Date.now() - timestamp < 14400000) {
+              setProfile(p);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {}
+        }
 
-      const cached = localStorage.getItem(localKey);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setProfile(parsed);
-        } catch (e) {}
-      }
+        const cached = localStorage.getItem(localKey);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setProfile(parsed);
+          } catch (e) {}
+        }
 
-      try {
         const { data, error } = await supabase.from('users').select('*').eq('id', supabaseUser.id).single();
         if (data && !error) {
-          const profileData = data as unknown as UserProfile;
+          const profileData = {
+            ...data,
+            uid: data.uid || data.id // Ensure uid exists for migrated users
+          } as unknown as UserProfile;
           setProfile(profileData);
           const cacheData = { profile: profileData, timestamp: Date.now() };
           localStorage.setItem(localKey, JSON.stringify(profileData));
@@ -72,14 +75,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Profile not found - create it
           await createProfile(supabaseUser);
         }
-      } catch (error: any) {
-        console.error('Error fetching profile:', error);
+      } else {
         setProfile(null);
       }
-    } else {
-      setProfile(null);
+    } catch (error: any) {
+      console.error('Error in session handler:', error);
+      // Handle the "Refresh Token Not Found" error by signing out
+      if (error.message?.includes('Refresh Token Not Found')) {
+        await supabase.auth.signOut();
+        window.location.reload();
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const createProfile = async (supabaseUser: any) => {

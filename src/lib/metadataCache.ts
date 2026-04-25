@@ -34,7 +34,7 @@ class MetadataCache {
         .single();
         
       if (!error && data) {
-        const profile = data as UserProfile;
+        const profile = { ...data, uid: data.uid || data.id } as UserProfile;
         this.cacheUser(uid, profile);
         return profile;
       }

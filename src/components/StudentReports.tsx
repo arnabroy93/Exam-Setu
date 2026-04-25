@@ -107,7 +107,11 @@ export const StudentReports: React.FC = () => {
         setLastSearchQuery(term);
         
         const { data: studentsData, count } = await q;
-        setSearchBuffer(studentsData as any as UserProfile[]);
+        const mappedStudents = (studentsData || []).map((s: any) => ({
+          ...s,
+          uid: s.uid || s.id
+        })) as UserProfile[];
+        setSearchBuffer(mappedStudents);
         if (count !== null) setTotalStudentsCount(count);
       } else {
         setSearchBuffer(null);
@@ -124,7 +128,11 @@ export const StudentReports: React.FC = () => {
         q = q.order('createdAt', { ascending: false }).range(start, end);
         
         const { data: studentsData, count } = await q;
-        setStudents(studentsData as any as UserProfile[]);
+        const mappedStudents = (studentsData || []).map((s: any) => ({
+          ...s,
+          uid: s.uid || s.id
+        })) as UserProfile[];
+        setStudents(mappedStudents);
         if (count !== null) setTotalStudentsCount(count);
         setCurrentPage(newPage);
       }
@@ -701,7 +709,10 @@ export const StudentReports: React.FC = () => {
         for(let i=0; i<missingIds.length; i+=30) {
           const batchIds = missingIds.slice(i, i+30);
           const { data: usrData } = await supabase.from('users').select('*').in('id', batchIds);
-          if (usrData) targetStudents = [...targetStudents, ...(usrData as any as UserProfile[])];
+          if (usrData) {
+            const mapped = (usrData as any[]).map(s => ({ ...s, uid: s.uid || s.id }));
+            targetStudents = [...targetStudents, ...mapped];
+          }
         }
       }
       
