@@ -47,6 +47,8 @@ export const UserManagement: React.FC = () => {
   
   // Delete dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const [userToReset, setUserToReset] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -175,6 +177,33 @@ export const UserManagement: React.FC = () => {
       alert('Failed to perform bulk delete.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!userToReset) return;
+    setLoading(true);
+    try {
+      // Use the RPC function created in the SQL Step
+      const { error } = await supabase.rpc('reset_user_password', {
+        target_user_id: userToReset.uid || (userToReset as any).id,
+        new_password: 'Default1234'
+      });
+
+      if (error) throw error;
+
+      if (currentUserProfile) {
+        await logUserActivity(currentUserProfile, 'ADMIN_RESET_PASSWORD', `Admin reset password for user: ${userToReset.email}`);
+      }
+
+      setIsResetPasswordOpen(false);
+      setUserToReset(null);
+      alert(`Password for ${userToReset.email} has been reset to "Default1234" and they will be forced to change it on next login.`);
+    } catch (error: any) {
+      console.error('Error resetting password:', error);
+      alert('Failed to reset password: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -481,20 +510,35 @@ export const UserManagement: React.FC = () => {
                         </Select>
                       </TableCell>
                       <TableCell className="px-4 text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8"
-                          onClick={() => {
-                            setIsBulkDelete(false);
-                            setUserToDelete(user.uid! || user.id!);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                          disabled={(user.uid || user.id) === currentUserProfile?.uid}
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-primary hover:bg-primary/10 h-8 w-8"
+                            onClick={() => {
+                              setUserToReset(user);
+                              setIsResetPasswordOpen(true);
+                            }}
+                            disabled={(user.uid || user.id) === currentUserProfile?.uid}
+                            title="Reset Password to Default"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8"
+                            onClick={() => {
+                              setIsBulkDelete(false);
+                              setUserToDelete(user.uid! || user.id!);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            disabled={(user.uid || user.id) === currentUserProfile?.uid}
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </tr>
                   ))
@@ -564,6 +608,28 @@ export const UserManagement: React.FC = () => {
               disabled={isDeleting}
             >
               {isDeleting ? 'Deleting...' : 'Permanently Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Password Dialog */}
+      <AlertDialog open={isResetPasswordOpen} onOpenChange={setIsResetPasswordOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2 text-primary mb-2">
+              <RefreshCw className="w-5 h-5" />
+              <AlertDialogTitle>Reset User Password</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              This will reset the password for <strong>{userToReset?.email}</strong> to <strong>Default1234</strong>. 
+              The user will be required to change their password immediately upon their next login.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetPassword}>
+              Reset Password
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

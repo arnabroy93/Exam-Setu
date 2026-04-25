@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './lib/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
+import { PasswordResetBarrier } from './components/PasswordResetBarrier';
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
@@ -17,7 +18,11 @@ function AppContent() {
     return <LoginPage />;
   }
 
-  return <Dashboard />;
+  return (
+    <PasswordResetBarrier user={user}>
+      <Dashboard />
+    </PasswordResetBarrier>
+  );
 }
 
 export default function App() {

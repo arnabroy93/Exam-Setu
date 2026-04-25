@@ -8,7 +8,7 @@ import { GraduationCap, ShieldCheck, UserCog, LogIn, Layers } from 'lucide-react
 import { motion } from 'motion/react';
 
 export const LoginPage: React.FC = () => {
-  const { signIn, loading } = useAuth();
+  const { loading } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
   const [error, setError] = useState<string | null>(null);
 
@@ -64,10 +64,14 @@ export const LoginPage: React.FC = () => {
     }
 
     const { supabase } = await import('../lib/supabase');
+    const redirectTo = window.location.origin.includes('localhost') 
+      ? `${window.location.origin}/` 
+      : `${window.location.origin}/`;
+
     const { error } = await supabase.auth.signInWithOtp({ 
       email: cleanEmail,
       options: { 
-        emailRedirectTo: `${window.location.origin}/`,
+        emailRedirectTo: redirectTo,
         data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
       }
     });
@@ -76,26 +80,6 @@ export const LoginPage: React.FC = () => {
       setError(error.message.toLowerCase().includes('rate limit') ? 'Too many attempts! Please wait.' : error.message);
     } else {
       setError('Success! Check your email inbox for the magic link.');
-    }
-  };
-
-  const handleLogin = async () => {
-    setError(null);
-    try {
-      await signIn(selectedRole);
-    } catch (err: any) {
-      console.error('Login failed', err);
-      if (err.code === 'auth/popup-blocked') {
-        setError('Popup blocked! Please enable popups for this site to sign in.');
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in cancelled. Please try again.');
-      } else if (err.code === 'auth/not-authorized') {
-        setError('Not authorised. Only anudip.org domain or specific authorized emails are allowed.');
-      } else if (err.message?.toLowerCase().includes('quota')) {
-        setError('Database quota exceeded. This usually resets every 24 hours. Please try again later.');
-      } else {
-        setError('An unexpected error occurred. Please try again.');
-      }
     }
   };
 
@@ -214,25 +198,6 @@ export const LoginPage: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-
-                  <div className="relative my-6">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground font-medium">Or</span>
-                    </div>
-                  </div>
-
-                  <Button 
-                    onClick={handleLogin} 
-                    variant="outline"
-                    disabled={loading} 
-                    className="w-full h-12 text-base transition-all hover:bg-muted"
-                  >
-                    <LogIn className="mr-2 w-5 h-5" />
-                    Continue with Google
-                  </Button>
               </div>
             </Tabs>
           </CardContent>
