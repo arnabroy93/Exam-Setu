@@ -130,24 +130,50 @@ export const LoginPage: React.FC = () => {
               </TabsList>
               
               <div className="mt-6 space-y-4">
-                  <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-xl space-y-4">
-                    <div>
-                      <h3 className="font-semibold text-lg text-primary">Direct Login</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Use your @anudip.org email with a password or magic link.
-                      </p>
+                  <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-xl space-y-5">
+                    {/* Common Email Input */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@anudip.org"
+                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
                     </div>
-                    
+
+                    {/* Magic Link Section */}
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground text-center font-medium">
+                        Use your @anudip.org email with a magic link
+                      </p>
+                      <Button 
+                        onClick={handleMagicLink}
+                        disabled={loading} 
+                        className="w-full h-11 font-semibold"
+                      >
+                        Send Magic Link to Email
+                      </Button>
+                    </div>
+
+                    {/* Separator */}
+                    <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs">
+                        <span className="bg-primary/5 px-2 text-muted-foreground font-bold uppercase">or option</span>
+                      </div>
+                    </div>
+
+                    {/* Direct Login Section */}
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="name@anudip.org"
-                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
+                      <div>
+                        <h3 className="font-semibold text-lg text-primary">Direct Login</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Use your @anudip.org email with a password
+                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -166,6 +192,7 @@ export const LoginPage: React.FC = () => {
                           onClick={() => handleEmailAuth(false)}
                           disabled={loading}
                           className="h-11 font-semibold"
+                          variant="secondary"
                         >
                           Sign In
                         </Button>
@@ -178,24 +205,6 @@ export const LoginPage: React.FC = () => {
                           Sign Up
                         </Button>
                       </div>
-
-                      <div className="relative py-2">
-                        <div className="absolute inset-0 flex items-center">
-                          <span className="w-full border-t" />
-                        </div>
-                        <div className="relative flex justify-center text-xs">
-                          <span className="bg-primary/5 px-2 text-muted-foreground font-medium italic">or use magic link</span>
-                        </div>
-                      </div>
-
-                      <Button 
-                        variant="ghost"
-                        onClick={handleMagicLink}
-                        disabled={loading} 
-                        className="w-full h-10 text-primary font-medium hover:bg-primary/10"
-                      >
-                        Send Magic Link to Email
-                      </Button>
                     </div>
                   </div>
               </div>
