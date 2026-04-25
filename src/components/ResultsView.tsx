@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { metadataCache } from '../lib/metadataCache';
-import { isAnswerCorrect, calculateTotalObtained } from '../lib/gradingUtils';
+import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,9 +14,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const ResultsView: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [attempts, setAttempts] = useState<(ExamAttempt & { exam?: Exam })[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState<(ExamAttempt & { exam?: Exam }) | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const handleExportPDF = () => {
     if (!selectedAttempt || !profile) return;
@@ -24,7 +25,7 @@ export const ResultsView: React.FC = () => {
     if (!exam) return;
 
     const doc = new jsPDF();
-    const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+    const examFullMarks = exam ? calculateEffectiveFullMarks(exam.questions, selectedAttempt.status) : 0;
     const currentScore = calculateTotalObtained(selectedAttempt, exam);
     const percentage = examFullMarks > 0 ? (currentScore / examFullMarks) * 100 : 0;
 
@@ -107,43 +108,85 @@ export const ResultsView: React.FC = () => {
     const fetchAttempts = async () => {
       if (!profile) return;
       
+      setLoading(true);
       const cacheKey = `student_results_${profile.uid}`;
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < 900000) { // 15 mins cache
-          setAttempts(data);
-          return;
+        try {
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < 300000) { // 5 mins cache
+            setAttempts(data);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          localStorage.removeItem(cacheKey);
         }
       }
 
       try {
-        const { data: attemptsData } = await supabase
+        console.log('Fetching attempts for student:', profile.uid, (profile as any).id);
+        const searchIds = [profile.uid];
+        if ((profile as any).id && (profile as any).id !== profile.uid) {
+          searchIds.push((profile as any).id);
+        }
+
+        const { data: attemptsData, error } = await supabase
           .from('attempts')
           .select('*')
-          .eq('studentId', profile.uid)
+          .in('studentId', searchIds)
           .order('startTime', { ascending: false })
-          .limit(20);
+          .limit(50);
         
+        if (error) throw error;
+
         // Fetch enriched data
-        const enrichedAttempts = await Promise.all((attemptsData as any as ExamAttempt[] || []).map(async (attempt) => {
-          const exam = await metadataCache.getExam(attempt.examId);
-          return { ...attempt, exam: exam || undefined };
+        const rawAttempts = (attemptsData as any as ExamAttempt[]) || [];
+        const enrichedAttempts = await Promise.all(rawAttempts.map(async (attempt) => {
+          try {
+            const exam = await metadataCache.getExam(attempt.examId);
+            return { ...attempt, exam: exam || undefined };
+          } catch (e) {
+            console.error('Error enriching attempt:', attempt.id, e);
+            return attempt;
+          }
         }));
         
+        console.log('Enriched attempts result:', enrichedAttempts.length);
         setAttempts(enrichedAttempts);
         localStorage.setItem(cacheKey, JSON.stringify({ data: enrichedAttempts, timestamp: Date.now() }));
       } catch (error) {
         console.error('Error fetching results:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchAttempts();
   }, [profile]);
 
+  if (authLoading || (loading && attempts.length === 0)) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-muted-foreground animate-pulse">Loading your results...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <Card className="p-12 text-center text-muted-foreground">
+        <p>Please sign in to view your results.</p>
+      </Card>
+    );
+  }
+
   if (selectedAttempt) {
     const exam = selectedAttempt.exam;
-    const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+    const examFullMarks = exam ? calculateEffectiveFullMarks(exam.questions, selectedAttempt.status) : 0;
     const currentScore = calculateTotalObtained(selectedAttempt, exam);
     const percentage = examFullMarks > 0 ? (currentScore / examFullMarks) * 100 : 0;
 
@@ -345,7 +388,12 @@ export const ResultsView: React.FC = () => {
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
                     <p className="text-2xl font-bold text-primary">
                       {attempt.isPublished !== false ? (
-                        `${calculateTotalObtained(attempt, attempt.exam)}`
+                        (() => {
+                          const exam = attempt.exam;
+                          const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : 0;
+                          const score = calculateTotalObtained(attempt, exam);
+                          return fullMarks > 0 ? `${score} / ${fullMarks}` : `${score}`;
+                        })()
                       ) : (
                         <span className="text-sm font-normal text-muted-foreground italic">Score not published yet</span>
                       )}

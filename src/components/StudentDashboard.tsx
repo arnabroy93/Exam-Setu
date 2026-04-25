@@ -47,13 +47,18 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
 
       setAvailableExams(examsData as any as Exam[] || []);
 
-      // Fetch recent attempts
+      // Fetch recent attempts using multiple possible IDs (legacy uid and supabase id)
+      const searchIds = [profile.uid];
+      if ((profile as any).id && (profile as any).id !== profile.uid) {
+        searchIds.push((profile as any).id);
+      }
+
       const { data: attemptsData } = await supabase
         .from('attempts')
         .select('*')
-        .eq('studentId', profile.uid)
+        .in('studentId', searchIds)
         .order('startTime', { ascending: false })
-        .limit(3);
+        .limit(5);
       
       // Enrich attempts with exam titles using the cache
       const enrichedAttempts = await Promise.all((attemptsData as any as ExamAttempt[] || []).map(async (attempt) => {

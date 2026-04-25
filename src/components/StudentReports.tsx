@@ -5,7 +5,7 @@ import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
-import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -324,7 +324,7 @@ export const StudentReports: React.FC = () => {
       const exam = exams.find(e => e.id === attempt.examId);
       
       // Use stored totalPossibleMarks or calculate from exam if missing (legacy compatibility)
-      const examFullMarks = attempt.totalPossibleMarks || (exam ? exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) : 0);
+      const examFullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : (attempt.totalPossibleMarks || 0);
       
       if (examFullMarks > 0) {
         totalFullMarks += examFullMarks;
@@ -652,7 +652,7 @@ export const StudentReports: React.FC = () => {
         Object.values(attemptsByExam).forEach(attempt => {
           const exam = currentExams.find(e => e.id === attempt.examId);
           if (exam) {
-            const examFullMarks = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0);
+            const examFullMarks = calculateEffectiveFullMarks(exam.questions, attempt.status);
             totalFullMarks += examFullMarks;
             totalScore += calculateTotalObtained(attempt, exam);
           }
@@ -793,7 +793,7 @@ export const StudentReports: React.FC = () => {
             : 0;
           
           const totalMarksObtained = calculateTotalObtained(attempt, exam);
-          const examFullMarks = exam.questions.reduce((sum, question) => sum + (question.points || 0), 0);
+          const examFullMarks = calculateEffectiveFullMarks(exam.questions, attempt.status);
           const overallPercentage = examFullMarks > 0 ? ((totalMarksObtained / examFullMarks) * 100).toFixed(2) + '%' : '0%';
 
           reportRows.push({
@@ -975,7 +975,7 @@ export const StudentReports: React.FC = () => {
               const studentAttempts = attempts.filter(a => a.studentId === selectedStudent.uid && (a.status === 'submitted' || a.status === 'graded'));
               const data = studentAttempts.map(a => {
                 const exam = exams.find(e => e.id === a.examId);
-                const fullMarks = exam ? exam.questions.reduce((sum, q) => sum + (q.points || 0), 0) : 0;
+                const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, a.status) : 0;
                 const score = calculateTotalObtained(a, exam);
                 return {
                   'Exam': exam?.title || 'Unknown',
@@ -1043,7 +1043,7 @@ export const StudentReports: React.FC = () => {
               {detailPaginatedAttempts.map((attempt) => {
                 const exam = exams.find(e => e.id === attempt.examId);
                 const suspiciousCount = attempt.suspiciousActivity?.length || 0;
-                const examFullMarks = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+                const examFullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : 0;
                 
                 // Calculate MCQ vs Subjective breakdown
                 const mcqMarks = attempt.autoScore !== undefined 

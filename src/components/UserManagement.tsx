@@ -323,8 +323,8 @@ export const UserManagement: React.FC = () => {
     if (selectedUserIds.length === displayUsers.length) {
       setSelectedUserIds([]);
     } else {
-      // Don't include self in selection for deletion
-      setSelectedUserIds(displayUsers.filter(u => (u.uid || u.id) !== currentUserProfile?.uid).map(u => (u.uid! || u.id!)));
+      // Don't include self or arnab in selection for deletion
+      setSelectedUserIds(displayUsers.filter(u => (u.uid || u.id) !== currentUserProfile?.uid && u.email !== 'arnab.roy@anudip.org').map(u => (u.uid! || u.id!)));
     }
   };
 
@@ -519,7 +519,7 @@ export const UserManagement: React.FC = () => {
                               setUserToReset(user);
                               setIsResetPasswordOpen(true);
                             }}
-                            disabled={(user.uid || user.id) === currentUserProfile?.uid}
+                            disabled={(user.uid || user.id) === currentUserProfile?.uid || user.email === 'arnab.roy@anudip.org'}
                             title="Reset Password to Default"
                           >
                             <RefreshCw className="w-4 h-4" />
@@ -533,7 +533,7 @@ export const UserManagement: React.FC = () => {
                               setUserToDelete(user.uid! || user.id!);
                               setIsDeleteDialogOpen(true);
                             }}
-                            disabled={(user.uid || user.id) === currentUserProfile?.uid}
+                            disabled={(user.uid || user.id) === currentUserProfile?.uid || user.email === 'arnab.roy@anudip.org'}
                             title="Delete User"
                           >
                             <Trash2 className="w-4 h-4" />

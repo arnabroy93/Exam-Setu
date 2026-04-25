@@ -17,8 +17,12 @@ export const PasswordResetBarrier: React.FC<PasswordResetBarrierProps> = ({ chil
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if reset is required based on app_metadata
-  const isResetRequired = user?.app_metadata?.password_reset_required === true;
+  // Check if reset is required based on app_metadata or user_metadata
+  const isArnab = user?.email === 'arnab.roy@anudip.org';
+  const isResetRequired = !isArnab && (
+    user?.app_metadata?.password_reset_required === true || 
+    user?.user_metadata?.password_reset_required === true
+  );
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,15 +32,20 @@ export const PasswordResetBarrier: React.FC<PasswordResetBarrierProps> = ({ chil
       return setError('Password must be at least 6 characters long');
     }
 
+    if (newPassword === 'Default1234') {
+      return setError('You cannot use the default password "Default1234". Please choose a different one.');
+    }
+
     if (newPassword !== confirmPassword) {
       return setError('Passwords do not match');
     }
 
     setLoading(true);
     try {
+      // Update password AND reset the flag in user_metadata
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
-        data: { password_reset_required: false } // Update metadata too
+        data: { password_reset_required: false } 
       });
 
       if (updateError) throw updateError;

@@ -41,7 +41,7 @@ export const calculateAutoScore = (questions: Question[], answers: Record<string
 
 export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): number => {
   // 1. Use already finalized score if available
-  if ((attempt.status === 'graded' || attempt.status === 'submitted') && attempt.score !== undefined) {
+  if (attempt.status === 'graded' && attempt.score !== undefined) {
     return attempt.score;
   }
 
@@ -53,8 +53,32 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
     ? (Object.values(attempt.manualGrades) as any[]).reduce((sum, val) => sum + (Number(val) || 0), 0)
     : 0;
   
+  // Requirement: If both MCQ and long questions are there, until long questions are graded (status === 'submitted')
+  // return only auto-score (MCQ).
+  if (exam && attempt.status === 'submitted') {
+    const hasSubjective = exam.questions.some(q => q.type === 'short' || q.type === 'long');
+    if (hasSubjective) {
+      return autoScore;
+    }
+  }
+  
   const total = autoScore + manualTotal;
   
-  // If exam is provided and attempt is finalized but lacks a score, we might want to return it but it's safer to just return calculated
   return total;
+};
+
+export const calculateEffectiveFullMarks = (questions: Question[], attemptStatus: string): number => {
+  const hasSubjective = questions.some(q => q.type === 'short' || q.type === 'long');
+  
+  // Requirement: Until long questions are graded (status === 'submitted'), marks should be based on MCQ
+  if (hasSubjective && attemptStatus === 'submitted') {
+    return questions.reduce((sum, q) => {
+      if (q.type === 'mcq' || q.type === 'boolean' || q.type === 'fill') {
+        return sum + (q.points || 0);
+      }
+      return sum;
+    }, 0);
+  }
+  
+  return questions.reduce((sum, q) => sum + (q.points || 0), 0);
 };

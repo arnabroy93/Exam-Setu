@@ -36,7 +36,11 @@ export const LoginPage: React.FC = () => {
           email: cleanEmail,
           password,
           options: {
-            data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
+            data: { 
+              full_name: cleanEmail.split('@')[0], 
+              role: selectedRole,
+              password_reset_required: password === 'Default1234' && cleanEmail !== 'arnab.roy@anudip.org'
+            }
           }
         });
         if (signUpError) throw signUpError;
@@ -173,6 +177,10 @@ export const LoginPage: React.FC = () => {
                         <p className="text-sm text-muted-foreground mt-1">
                           Use your @anudip.org email with a password
                         </p>
+                        <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded text-[11px] text-blue-700 leading-tight">
+                          <strong>New Users:</strong> Your default password is <strong className="select-all">Default1234</strong>. 
+                          Please use <strong>Sign Up</strong> with this password for your first login.
+                        </div>
                       </div>
 
                       <div className="space-y-2">
