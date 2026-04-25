@@ -344,7 +344,7 @@ export const ResultsView: React.FC = () => {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
                     <p className="text-2xl font-bold text-primary">
-                      {attempt.isPublished ? (
+                      {attempt.isPublished !== false ? (
                         `${calculateTotalObtained(attempt, attempt.exam)}`
                       ) : (
                         <span className="text-sm font-normal text-muted-foreground italic">Score not published yet</span>
@@ -380,10 +380,10 @@ export const ResultsView: React.FC = () => {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      disabled={!attempt.isPublished}
+                      disabled={attempt.isPublished === false}
                       onClick={() => setSelectedAttempt(attempt)}
                     >
-                      {attempt.isPublished ? 'View Detailed Report' : 'Report Locked'}
+                      {attempt.isPublished !== false ? 'View Detailed Report' : 'Report Locked'}
                     </Button>
                   </div>
                 </div>

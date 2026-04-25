@@ -58,8 +58,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (e) {}
         }
 
-        const { data, error } = await supabase.from('users').select('*').eq('id', supabaseUser.id).single();
-        if (data && !error) {
+        let { data, error } = await supabase.from('users').select('*').eq('id', supabaseUser.id).maybeSingle();
+        
+        // If not found by ID, try searching by email (for migrated users)
+        if (!data) {
+          const { data: emailData, error: emailError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', supabaseUser.email)
+            .maybeSingle();
+          
+          if (emailData) {
+            // Migrated user found! Link their new Supabase ID to the existing record
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({ id: supabaseUser.id })
+              .eq('email', supabaseUser.email);
+            
+            if (!updateError) {
+              data = { ...emailData, id: supabaseUser.id };
+            }
+          }
+        }
+
+        if (data) {
           const profileData = {
             ...data,
             uid: data.uid || data.id // Ensure uid exists for migrated users
@@ -68,11 +90,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cacheData = { profile: profileData, timestamp: Date.now() };
           localStorage.setItem(localKey, JSON.stringify(profileData));
           sessionStorage.setItem(sessionKey, JSON.stringify(cacheData));
-        } else if (error && error.code !== 'PGRST116') {
-          console.error('Supabase error:', error);
-          setProfile(null);
         } else {
-          // Profile not found - create it
+          // Profile truly not found - create it
           await createProfile(supabaseUser);
         }
       } else {
