@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Exam, ExamAttempt, ActivityLog } from '../types';
 import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { calculateAutoScore } from '../lib/gradingUtils';
 import { logUserActivity } from '../lib/activityLogger';
@@ -55,13 +54,14 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     }
 
     const checkAttempt = async () => {
-      const q = query(
-        collection(db, 'attempts'),
-        where('examId', '==', exam.id),
-        where('studentId', '==', profile.uid)
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
+      const { data } = await supabase
+        .from('attempts')
+        .select('id')
+        .eq('examId', exam.id)
+        .eq('studentId', profile.uid)
+        .limit(1);
+
+      if (data && data.length > 0) {
         setHasAttempted(true);
       }
       setCheckingAttempt(false);
@@ -129,9 +129,9 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       };
 
       try {
-        // Remove any undefined values that might crash Firestore
+        // Remove any undefined values that might crash
         const cleanAttempt = JSON.parse(JSON.stringify(attempt));
-        await setDoc(doc(db, 'attempts', attemptId), cleanAttempt);
+        await supabase.from('attempts').upsert(cleanAttempt, { onConflict: 'id' });
         
         // Update sync ref
         lastSyncRef.current = {
@@ -196,7 +196,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       // Final safety check: JSON stringify/parse removes all undefined values
       const finalAttempt = JSON.parse(JSON.stringify(attemptData));
 
-      await setDoc(doc(db, 'attempts', attemptId), finalAttempt);
+      await supabase.from('attempts').upsert(finalAttempt, { onConflict: 'id' });
       await updateStat('submittedAttempts', 1);
       console.log('Submission successful');
       

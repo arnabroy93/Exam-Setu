@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, query, deleteDoc, doc, limit, orderBy } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Exam } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,9 +57,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
 
     setLoading(true);
     try {
-      const q = query(collection(db, 'exams'), orderBy('createdAt', 'desc'), limit(100));
-      const snapshot = await getDocs(q);
-      const examsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
+      const { data } = await supabase.from('exams').select('*').order('createdAt', { ascending: false }).limit(100);
+      const examsData = (data || []) as any as Exam[];
       setExams(examsData);
       localStorage.setItem(cacheKey, JSON.stringify({ data: examsData, timestamp: Date.now() }));
     } catch (error) {
@@ -79,7 +77,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({ onEdit, onView }
     
     try {
       const exam = exams.find(e => e.id === examToDelete);
-      await deleteDoc(doc(db, 'exams', examToDelete));
+      await supabase.from('exams').delete().eq('id', examToDelete);
       
       // Update counters
       if (exam) {

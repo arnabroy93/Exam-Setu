@@ -5,8 +5,6 @@ import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Pla
 import { ExamCreator } from './ExamCreator';
 import { ExamInterface } from './ExamInterface';
 import { ResultsView } from './ResultsView';
-import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { Exam } from '../types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, limit, orderBy, getDoc, doc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,27 +39,24 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
 
     try {
       // Fetch available exams (limit to 12 to save quota)
-      const examsQuery = query(
-        collection(db, 'exams'), 
-        where('status', '==', 'published'),
-        limit(12)
-      );
-      const examsSnapshot = await getDocs(examsQuery);
-      const examsData = examsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
-      setAvailableExams(examsData);
+      const { data: examsData } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('status', 'published')
+        .limit(12);
+
+      setAvailableExams(examsData as any as Exam[] || []);
 
       // Fetch recent attempts
-      const attemptsQuery = query(
-        collection(db, 'attempts'),
-        where('studentId', '==', profile.uid),
-        orderBy('startTime', 'desc'),
-        limit(3)
-      );
-      const attemptsSnapshot = await getDocs(attemptsQuery);
-      const attemptsData = attemptsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
+      const { data: attemptsData } = await supabase
+        .from('attempts')
+        .select('*')
+        .eq('studentId', profile.uid)
+        .order('startTime', { ascending: false })
+        .limit(3);
       
       // Enrich attempts with exam titles using the cache
-      const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
+      const enrichedAttempts = await Promise.all((attemptsData as any as ExamAttempt[] || []).map(async (attempt) => {
         const exam = await metadataCache.getExam(attempt.examId);
         return {
           ...attempt,

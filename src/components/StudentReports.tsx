@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, writeBatch, doc, updateDoc, deleteDoc, getDocs, limit, orderBy, startAfter, endBefore, limitToLast, getCountFromServer } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
@@ -94,86 +93,48 @@ export const StudentReports: React.FC = () => {
   const fetchData = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
     setIsRefreshing(true);
     try {
-      const studentsCol = collection(db, 'users');
-      let q;
+      let q = supabase.from('users').select('*', { count: 'exact' }).eq('role', 'student');
 
-      // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
         const term = debouncedSearchTerm.trim();
-        // If we have a buffer and the new term is a refinement, don't fetch from Firestore
         if (!force && searchBuffer && term.toLowerCase().startsWith(lastSearchQuery.toLowerCase()) && lastSearchQuery !== '') {
           setIsRefreshing(false);
           setLoading(false);
           return;
         }
 
-        // Fetch new buffer - increased to 1000 for 'near-perfect' search in sub-1k environments
-        q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(1000));
+        q = q.order('createdAt', { ascending: false }).limit(1000);
         setLastSearchQuery(term);
+        
+        const { data: studentsData, count } = await q;
+        setSearchBuffer(studentsData as any as UserProfile[]);
+        if (count !== null) setTotalStudentsCount(count);
       } else {
-        // Not searching, clear buffer
         setSearchBuffer(null);
         setLastSearchQuery('');
         
-        const baseConstraints = [where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(itemsPerPage)];
-        if (direction === 'next' && lastDoc) {
-          q = query(studentsCol, ...baseConstraints, startAfter(lastDoc));
-        } else if (direction === 'prev' && firstDoc) {
-          q = query(studentsCol, where('role', '==', 'student'), orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
-        } else {
-          q = query(studentsCol, ...baseConstraints);
-        }
+        let newPage = currentPage;
+        if (direction === 'first' || !direction) newPage = 1;
+        else if (direction === 'next') newPage = currentPage + 1;
+        else if (direction === 'prev') newPage = currentPage - 1;
+
+        const start = (newPage - 1) * itemsPerPage;
+        const end = start + itemsPerPage - 1;
+
+        q = q.order('createdAt', { ascending: false }).range(start, end);
+        
+        const { data: studentsData, count } = await q;
+        setStudents(studentsData as any as UserProfile[]);
+        if (count !== null) setTotalStudentsCount(count);
+        setCurrentPage(newPage);
       }
-
-      // Check count persistence
-      const cacheKey = 'total_students_count_persistent';
-      if (direction === 'first' || !direction) {
-        const cached = localStorage.getItem(cacheKey);
-        if (!force && cached && !isRefreshing) {
-          try {
-            const { count, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
-              setTotalStudentsCount(count);
-            } else {
-              throw new Error('stale');
-            }
-          } catch (e) {
-            // Use the optimized stats document
-            const stats = await getSystemStats(force);
-            const count = stats ? stats.totalStudents : 0;
-            setTotalStudentsCount(count);
-            localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
-          }
-        } else {
-          const stats = await getSystemStats(force);
-          const count = stats ? stats.totalStudents : 0;
-          setTotalStudentsCount(count);
-          localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
-        }
-      }
-
-      const studentsSnap = await getDocs(q);
-      let studentsData = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
-      
-      if (debouncedSearchTerm) {
-        setSearchBuffer(studentsData);
-      } else {
-        setStudents(studentsData);
-        setFirstDoc(studentsSnap.docs[0]);
-        setLastDoc(studentsSnap.docs[studentsSnap.docs.length - 1]);
-      }
-
-      if (!direction || direction === 'first') setCurrentPage(1);
-      else if (direction === 'next') setCurrentPage(prev => prev + 1);
-      else if (direction === 'prev') setCurrentPage(prev => prev - 1);
-
     } catch (error) {
       console.error('Error fetching reports data:', error);
     } finally {
       setIsRefreshing(false);
       setLoading(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, isRefreshing, searchBuffer, lastSearchQuery]);
+  }, [itemsPerPage, debouncedSearchTerm, currentPage, isRefreshing, searchBuffer, lastSearchQuery]);
 
   // Effect to handle attempts fetching for visible page only (Massive optimization)
   useEffect(() => {
@@ -200,11 +161,8 @@ export const StudentReports: React.FC = () => {
         // Chunk 'in' queries to respect Firestore's 30-item limit
         for (let i = 0; i < idsToFetch.length; i += 30) {
           const batchIds = idsToFetch.slice(i, i + 30);
-          const attemptsSnap = await getDocs(query(
-            collection(db, 'attempts'), 
-            where('studentId', 'in', batchIds)
-          ));
-          newAttempts = [...newAttempts, ...attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt))];
+          const { data: attemptsData } = await supabase.from('attempts').select('*').in('studentId', batchIds);
+          if (attemptsData) newAttempts = [...newAttempts, ...(attemptsData as any as ExamAttempt[])];
         }
         
         // Append to existing attempts state (unique only)
@@ -268,7 +226,7 @@ export const StudentReports: React.FC = () => {
           if (attempt.gradedBy) {
             const grader = await metadataCache.getUser(attempt.gradedBy);
             if (grader) {
-              await updateDoc(doc(db, 'attempts', attempt.id), { gradedByName: grader.displayName });
+              await supabase.from('attempts').update({ gradedByName: grader.displayName }).eq('id', attempt.id);
               setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, gradedByName: grader.displayName } : a));
               continue;
             }
@@ -278,15 +236,8 @@ export const StudentReports: React.FC = () => {
         // 2. Deep scan via Activity Logs for truly legacy data (no UID, no Name)
         const trulyLegacy = missing.filter(a => !a.gradedBy);
         if (trulyLegacy.length > 0) {
-          const logsRef = collection(db, 'user_activities');
-          const q = query(
-            logsRef, 
-            where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']),
-            orderBy('timestamp', 'desc'),
-            limit(300)
-          );
-          const logsSnap = await getDocs(q);
-          const logs = logsSnap.docs.map(d => d.data());
+          const { data: logsData } = await supabase.from('user_activities').select('*').in('action', ['GRADED_EXAM', 'REGRADED_EXAM']).order('timestamp', { ascending: false }).limit(500);
+          const logs = logsData || [];
 
           for (const attempt of trulyLegacy) {
             const exam = exams.find(e => e.id === attempt.examId);
@@ -299,10 +250,7 @@ export const StudentReports: React.FC = () => {
             );
 
             if (match) {
-              await updateDoc(doc(db, 'attempts', attempt.id), {
-                gradedBy: match.userId,
-                gradedByName: match.userName
-              });
+              await supabase.from('attempts').update({ gradedBy: match.userId, gradedByName: match.userName }).eq('id', attempt.id);
               setAttempts(prev => prev.map(a => 
                 a.id === attempt.id ? { ...a, gradedBy: match.userId, gradedByName: match.userName } : a
               ));
@@ -329,7 +277,7 @@ export const StudentReports: React.FC = () => {
     if (!attemptToReset) return;
     setIsResettingAttempt(true);
     try {
-      await deleteDoc(doc(db, 'attempts', attemptToReset));
+      await supabase.from('attempts').delete().eq('id', attemptToReset);
       await updateStat('submittedAttempts', -1);
       setAttemptToReset(null);
       if (selectedAttemptId === attemptToReset) {
@@ -416,16 +364,16 @@ export const StudentReports: React.FC = () => {
       for (let i = 0; i < allBatchIds.length; i += CHUNK_SIZE) {
         const chunk = allBatchIds.slice(i, i + CHUNK_SIZE);
         const promises = chunk.map(batchIds => 
-          getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)))
+          supabase.from('attempts').select('*').in('studentId', batchIds)
         );
         const results = await Promise.all(promises);
         allResults.push(...results);
       }
 
       const attemptsToUpdate: ExamAttempt[] = [];
-      allResults.forEach(snap => {
-        snap.docs.forEach(d => {
-          const a = { id: d.id, ...d.data() as any } as ExamAttempt;
+      allResults.forEach((snap: any) => {
+        (snap.data || []).forEach((d: any) => {
+          const a = d as ExamAttempt;
           if ((a.status === 'submitted' || a.status === 'graded') && (publish ? !a.isPublished : a.isPublished)) {
             attemptsToUpdate.push(a);
           }
@@ -438,18 +386,13 @@ export const StudentReports: React.FC = () => {
         return;
       }
 
-      // 2. Commit updates in chunks of 500 (Firestore limit)
-      for (let i = 0; i < attemptsToUpdate.length; i += 500) {
-        const currentBatchUpdates = attemptsToUpdate.slice(i, i + 500);
-        const batch = writeBatch(db);
-        currentBatchUpdates.forEach(attempt => {
-          batch.update(doc(db, 'attempts', attempt.id), { 
-            isPublished: publish,
-            lastModified: Date.now() // Audit trail
-          });
-        });
-        await batch.commit();
-      }
+      // 2. Commit updates using Promise.all for Supabase
+      const updatePromises = attemptsToUpdate.map(attempt =>
+        supabase.from('attempts')
+          .update({ isPublished: publish, lastModified: Date.now() })
+          .eq('id', attempt.id)
+      );
+      await Promise.all(updatePromises);
       
       // 3. Optimized Local State Update
       const updatedIds = new Set(attemptsToUpdate.map(a => a.id));
@@ -481,20 +424,16 @@ export const StudentReports: React.FC = () => {
   const handleDeleteStudents = async () => {
     setIsDeleting(true);
     try {
-      const batch = writeBatch(db);
+      await supabase.from('users').delete().in('id', studentsToDelete);
       
-      // Delete user documents
-      studentsToDelete.forEach(studentId => {
-        batch.delete(doc(db, 'users', studentId));
-      });
-
-      // Find and delete all attempts for these students
       const attemptsToDelete = attempts.filter(a => studentsToDelete.includes(a.studentId));
-      attemptsToDelete.forEach(attempt => {
-        batch.delete(doc(db, 'attempts', attempt.id));
-      });
-
-      await batch.commit();
+      if (attemptsToDelete.length > 0) {
+        const attemptIds = attemptsToDelete.map(a => a.id);
+        const chunkSize = 100;
+        for (let i=0; i<attemptIds.length; i+=chunkSize) {
+           await supabase.from('attempts').delete().in('id', attemptIds.slice(i, i+chunkSize));
+        }
+      }
       
       if (profile) {
         const deletedNames = studentsToDelete.map(id => students.find(s => s.uid === id)?.displayName || 'Unknown').join(', ');
@@ -580,9 +519,8 @@ export const StudentReports: React.FC = () => {
     } else {
       setIsSelectingAll(true);
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'), orderBy('createdAt', 'desc'), limit(5000));
-        const snap = await getDocs(q);
-        const allIds = snap.docs.map(doc => doc.id);
+        const { data: stdIds } = await supabase.from('users').select('id').eq('role', 'student').order('createdAt', { ascending: false }).limit(5000);
+        const allIds = (stdIds || []).map((d: any) => d.id);
         setSelectedStudentIds(allIds);
       } catch (error) {
         console.error('Error selecting all students:', error);
@@ -656,8 +594,8 @@ export const StudentReports: React.FC = () => {
       if (debouncedSearchTerm && searchBuffer && searchBuffer.length > 0) {
         exportStudents = filteredStudents;
       } else {
-        const studentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(5000)));
-        exportStudents = studentsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+        const { data: stdData } = await supabase.from('users').select('*').eq('role', 'student').limit(5000);
+        exportStudents = stdData as any as UserProfile[] || [];
       }
 
       let exportAttempts: ExamAttempt[] = [];
@@ -673,8 +611,8 @@ export const StudentReports: React.FC = () => {
           // Fetch missing ones or all for export
           for(let i=0; i<studentIds.length; i+=30) {
             const batchIds = studentIds.slice(i, i+30);
-            const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
-            exportAttempts = [...exportAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+            const { data: atmptData } = await supabase.from('attempts').select('*').in('studentId', batchIds);
+            if (atmptData) exportAttempts = [...exportAttempts, ...(atmptData as any as ExamAttempt[])];
           }
         }
       }
@@ -762,8 +700,8 @@ export const StudentReports: React.FC = () => {
       if (missingIds.length > 0) {
         for(let i=0; i<missingIds.length; i+=30) {
           const batchIds = missingIds.slice(i, i+30);
-          const userSnap = await getDocs(query(collection(db, 'users'), where('__name__', 'in', batchIds)));
-          targetStudents = [...targetStudents, ...userSnap.docs.map(d => ({uid: d.id, ...d.data() as any} as UserProfile))];
+          const { data: usrData } = await supabase.from('users').select('*').in('id', batchIds);
+          if (usrData) targetStudents = [...targetStudents, ...(usrData as any as UserProfile[])];
         }
       }
       
@@ -771,8 +709,8 @@ export const StudentReports: React.FC = () => {
       let allAttempts: ExamAttempt[] = [];
       for(let i=0; i<studentIds.length; i+=30) {
         const batchIds = studentIds.slice(i, i+30);
-        const atmptSnap = await getDocs(query(collection(db, 'attempts'), where('studentId', 'in', batchIds)));
-        allAttempts = [...allAttempts, ...atmptSnap.docs.map(d => ({id: d.id, ...d.data() as any} as ExamAttempt))];
+        const { data: atmptData } = await supabase.from('attempts').select('*').in('studentId', batchIds);
+        if (atmptData) allAttempts = [...allAttempts, ...(atmptData as any as ExamAttempt[])];
       }
 
       // 3. Filter for submitted/graded attempts
@@ -799,8 +737,8 @@ export const StudentReports: React.FC = () => {
           // B. Resolve via Logs for truly legacy (no UID)
           const stillMissing = missingAttrAttempts.filter(a => !a.gradedByName);
           if (stillMissing.length > 0) {
-            const logsSnap = await getDocs(query(collection(db, 'user_activities'), where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']), orderBy('timestamp', 'desc'), limit(500)));
-            const logs = logsSnap.docs.map(d => d.data());
+            const { data: logsData } = await supabase.from('user_activities').select('*').in('action', ['GRADED_EXAM', 'REGRADED_EXAM']).order('timestamp', { ascending: false }).limit(500);
+            const logs = logsData || [];
             stillMissing.forEach(attempt => {
               const student = targetStudents.find(s => s.uid === attempt.studentId);
               const exam = currentExams.find(e => e.id === attempt.examId);
@@ -906,9 +844,7 @@ export const StudentReports: React.FC = () => {
     setIsPublishing(attempt.id);
     try {
       const newStatus = !attempt.isPublished;
-      await updateDoc(doc(db, 'attempts', attempt.id), {
-        isPublished: newStatus
-      });
+      await supabase.from('attempts').update({ isPublished: newStatus }).eq('id', attempt.id);
       // Update local state for immediate feedback
       setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, isPublished: newStatus } : a));
     } catch (error) {
@@ -951,14 +887,14 @@ export const StudentReports: React.FC = () => {
         gradedByName: profile?.displayName || 'Unknown'
       };
 
-      await updateDoc(doc(db, 'attempts', gradingAttempt.id), {
+      await supabase.from('attempts').update({
         manualGrades,
         autoScore,
         score: totalScore,
         status: 'graded',
         gradedBy: profile?.uid,
         gradedByName: profile?.displayName || 'Unknown'
-      });
+      }).eq('id', gradingAttempt.id);
       
       // Update local attempts state immediately
       setAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? updatedAttempt : a));

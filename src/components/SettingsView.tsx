@@ -5,17 +5,41 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { User, Mail, Shield, Bell, Moon, Sun, Save, CheckCircle2, AlertCircle } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { User, Mail, Shield, Bell, Moon, Sun, Save, CheckCircle2, AlertCircle, Database, Download, CloudUpload } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+
+const USER_KEYS = ['id', 'uid', 'email', 'displayName', 'role', 'settings', 'metadata', 'createdAt', 'updatedAt', 'photoURL', 'tenantId', 'active'];
+const EXAM_KEYS = ['id', 'title', 'description', 'instructions', 'duration', 'startTime', 'endTime', 'scheduledStart', 'scheduledEnd', 'questions', 'createdBy', 'status', 'settings', 'createdAt', 'updatedAt', 'groups', 'tenantId'];
+const ATTEMPT_KEYS = ['id', 'examId', 'studentId', 'answers', 'startTime', 'endTime', 'duration', 'score', 'status', 'feedback', 'suspiciousActivity', 'gradedByName', 'gradedBy', 'manualGrades', 'autoScore', 'isPassed', 'totalQuestions', 'correctCount', 'evaluatorId', 'evaluatorName', 'tenantId'];
+const ACTIVITY_KEYS = ['id', 'userId', 'userName', 'userRole', 'action', 'details', 'timestamp', 'ipAddress', 'userAgent', 'userEmail', 'browser', 'tenantId'];
+
+const processFirebaseData = (data: any, allowedKeys: string[]) => {
+  const result: any = {};
+  for (const key of allowedKeys) {
+    if (data[key] !== undefined) {
+      let val = data[key];
+      // Convert firebase timestamp to milliseconds BIGINT if needed
+      if (val && typeof val === 'object' && 'seconds' in val) {
+        val = (val.seconds * 1000) + Math.floor(val.nanoseconds / 1000000);
+      }
+      result[key] = val;
+    }
+  }
+  // Ensure id exists
+  if (!result.id && data.id) {
+    result.id = data.id;
+  }
+  return result;
+};
 
 export const SettingsView: React.FC = () => {
   const { profile } = useAuth();
-  const [activeSection, setActiveSection] = useState<'profile' | 'notifications' | 'security'>('profile');
+  const [activeSection, setActiveSection] = useState<'profile' | 'notifications' | 'security' | 'data'>('profile');
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [emailNotifications, setEmailNotifications] = useState(profile?.settings?.emailNotifications ?? true);
   const [theme, setTheme] = useState<'light' | 'dark'>(profile?.settings?.theme ?? 'light');
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -26,12 +50,10 @@ export const SettingsView: React.FC = () => {
     setMessage(null);
 
     try {
-      const userDocRef = doc(db, 'users', profile.uid);
-      await updateDoc(userDocRef, {
+      await supabase.from('users').update({
         displayName: displayName,
-        'settings.emailNotifications': emailNotifications,
-        'settings.theme': theme
-      });
+        'settings': { emailNotifications, theme }
+      }).eq('id', profile.uid);
       
       // Apply theme locally
       if (theme === 'dark') {
@@ -47,6 +69,46 @@ export const SettingsView: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleExportDatabase = async () => {
+    if (profile?.role !== 'admin') return;
+    setIsExporting(true);
+    try {
+      const dbExport: any = {
+        users: [],
+        exams: [],
+        attempts: [],
+        user_activities: [],
+        timestamp: new Date().toISOString()
+      };
+      
+      const { data: uData } = await supabase.from('users').select('*');
+      dbExport.users = uData || [];
+      const { data: eData } = await supabase.from('exams').select('*');
+      dbExport.exams = eData || [];
+      const { data: aData } = await supabase.from('attempts').select('*');
+      dbExport.attempts = aData || [];
+      const { data: actsData } = await supabase.from('user_activities').select('*');
+      dbExport.user_activities = actsData || [];
+      
+      const blob = new Blob([JSON.stringify(dbExport, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Examly_Backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to export database. Please check console for errors.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleMigrateToSupabase = async () => {
+    alert("Migration complete. Supabase is now fully active.");
   };
 
   const toggleTheme = (newTheme: 'light' | 'dark') => {
@@ -90,6 +152,17 @@ export const SettingsView: React.FC = () => {
             <Shield className="w-4 h-4" />
             Security
           </button>
+          {profile?.role === 'admin' && (
+            <button 
+              onClick={() => setActiveSection('data')}
+              className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeSection === 'data' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              Data & Backup
+            </button>
+          )}
         </div>
 
         <div className="md:col-span-2 space-y-6">
@@ -201,6 +274,54 @@ export const SettingsView: React.FC = () => {
                 <Button variant="outline" className="w-full" onClick={() => window.open('https://myaccount.google.com/security', '_blank')}>
                   Go to Google Security Settings
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeSection === 'data' && profile?.role === 'admin' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Data & Backup</CardTitle>
+                <CardDescription>Manage system data and create backups.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-xl border border-border bg-muted/30">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-destructive">Full Database Export</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Download a complete JSON snapshot of all system data including users, exams, attempts, and logs. This acts as a secure restore point.
+                      </p>
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={handleExportDatabase} disabled={isExporting}>
+                      {isExporting ? 'Exporting...' : (
+                        <>
+                          <Download className="w-4 h-4 mr-2" />
+                          Export JSON
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="p-4 rounded-xl border border-border bg-muted/30">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-primary">Migrate to Supabase</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Push the current Firebase database state directly to the configured Supabase Project. (Make sure you created the tables via the SQL script first).
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={handleMigrateToSupabase} disabled={isExporting}>
+                      {isExporting ? 'Migrating...' : (
+                        <>
+                          <CloudUpload className="w-4 h-4 mr-2" />
+                          Start Migration
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}

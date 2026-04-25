@@ -78,25 +78,86 @@ export const LoginPage: React.FC = () => {
                 </TabsTrigger>
               </TabsList>
               
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
-                <p className="text-sm text-muted-foreground text-center">
-                  {selectedRole === 'student' && "Access your exams, view results, and track your progress."}
-                  {selectedRole === 'examiner' && "Create exams, evaluate submissions, and manage question banks."}
-                  {selectedRole === 'admin' && "Full system control, user management, and advanced analytics."}
-                </p>
+              <div className="mt-6 space-y-4">
+                  <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-xl space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-lg text-primary">Email Login / Sign Up</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Enter your @anudip.org email. We'll send you a secure magic link, no passwords needed!
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <input
+                        type="email"
+                        id="email-input"
+                        placeholder="name@anudip.org"
+                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <Button 
+                        disabled={loading} 
+                        className="w-full h-12 text-base font-semibold"
+                        onClick={async () => {
+                          const emailInput = document.getElementById('email-input') as HTMLInputElement;
+                          const email = emailInput?.value?.trim();
+                          if (!email) return setError('Please enter your email address');
+                          
+                          // Check if it's anudip.org or allowed emails
+                          const isAuthorized = email.endsWith('@anudip.org') || 
+                                              email === 'arnabredmi3sprime@gmail.com' || 
+                                              email === 'arnabsukanya@gmail.com';
+                                              
+                          if (!isAuthorized) {
+                            return setError('Only @anudip.org emails are allowed to sign in.');
+                          }
+                          
+                          const { supabase } = await import('../lib/supabase');
+                          // Send Magic Link OTP
+                          const { error } = await supabase.auth.signInWithOtp({ 
+                            email: email,
+                            options: { 
+                              emailRedirectTo: `${window.location.origin}/`,
+                              data: { full_name: email.split('@')[0] }
+                            }
+                          });
+                          
+                          if (error) {
+                            if (error.message.toLowerCase().includes('rate limit')) {
+                               setError('Too many attempts! Please wait a few minutes before trying again.');
+                            } else {
+                               setError(error.message);
+                            }
+                          } else {
+                            setError('Success! Check your email inbox for the magic link (it might be in spam).');
+                          }
+                        }}
+                      >
+                        Send Magic Link
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground font-medium">Or</span>
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleLogin} 
+                    variant="outline"
+                    disabled={loading} 
+                    className="w-full h-12 text-base transition-all hover:bg-muted"
+                  >
+                    <LogIn className="mr-2 w-5 h-5" />
+                    Continue with Google
+                  </Button>
               </div>
             </Tabs>
           </CardContent>
-          <CardFooter>
-            <Button 
-              onClick={handleLogin} 
-              disabled={loading} 
-              className="w-full h-12 text-lg font-semibold transition-all hover:scale-[1.02]"
-            >
-              <LogIn className="mr-2 w-5 h-5" />
-              Sign in with Google
-            </Button>
-          </CardFooter>
         </Card>
         <p className="mt-8 text-center text-sm text-muted-foreground">
           By signing in, you agree to our Terms of Service and Privacy Policy.

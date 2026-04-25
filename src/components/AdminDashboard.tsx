@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, getDocs, getCountFromServer, doc, deleteDoc, orderBy, limit, getDoc, updateDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt, UserProfile } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -59,10 +58,13 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       setResolvedIds(currentResolved);
 
       try {
-        const logsRef = collection(db, 'user_activities');
-        const q = query(logsRef, where('action', 'in', ['GRADED_EXAM', 'REGRADED_EXAM']), orderBy('timestamp', 'desc'), limit(300));
-        const logsSnap = await getDocs(q);
-        const logs = logsSnap.docs.map(d => d.data());
+        const { data: logsData } = await supabase
+          .from('user_activities')
+          .select('*')
+          .in('action', ['GRADED_EXAM', 'REGRADED_EXAM'])
+          .order('timestamp', { ascending: false })
+          .limit(300);
+        const logs = logsData || [];
 
         for (const attempt of missing) {
           const student = students.find(s => s.uid === attempt.studentId);
@@ -70,7 +72,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           if (student && exam) {
             const match = logs.find(log => log.details.includes(exam.title) && log.details.includes(student.displayName));
             if (match) {
-              await updateDoc(doc(db, 'attempts', attempt.id), { gradedBy: match.userId, gradedByName: match.userName });
+              await supabase.from('attempts').update({ gradedBy: match.userId, gradedByName: match.userName }).eq('id', attempt.id);
               setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, gradedBy: match.userId, gradedByName: match.userName } : a));
             }
           }
@@ -159,72 +161,57 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         case 'active-exams':
         case 'inactive-exams':
         case 'total-exams':
-          const examsSnap = await getDocs(query(collection(db, 'exams'), limit(50)));
-          detailExams = examsSnap.docs.map(doc => doc.data() as Exam);
+          const { data: examsData } = await supabase.from('exams').select('*').limit(50);
+          detailExams = (examsData || []) as Exam[];
           setExams(detailExams);
           break;
         case 'total-attempts':
-          const attemptsSnap = await getDocs(query(collection(db, 'attempts'), where('status', 'in', ['submitted', 'graded']), limit(50), orderBy('startTime', 'desc')));
-          detailAttempts = attemptsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
+          const { data: attemptsData } = await supabase.from('attempts').select('*').in('status', ['submitted', 'graded']).order('startTime', { ascending: false }).limit(50);
+          detailAttempts = attemptsData as any as ExamAttempt[] || [];
           setAttempts(detailAttempts);
           
-          // Fetch only necessary student and exam metadata for these 50 attempts in batches
           const studentIds = Array.from(new Set(detailAttempts.map(a => a.studentId)));
           const examIds = Array.from(new Set(detailAttempts.map(a => a.examId)));
           
-          const studentBatches = [];
-          for (let i = 0; i < studentIds.length; i += 30) {
-            const batch = studentIds.slice(i, i + 30);
-            studentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+          if (studentIds.length > 0) {
+            const { data: stdData } = await supabase.from('users').select('*').in('id', studentIds);
+            if (stdData) detailStudents.push(...(stdData as any as UserProfile[]));
           }
 
-          const examBatches = [];
-          for (let i = 0; i < examIds.length; i += 30) {
-            const batch = examIds.slice(i, i + 30);
-            examBatches.push(getDocs(query(collection(db, 'exams'), where('__name__', 'in', batch))));
+          if (examIds.length > 0) {
+            const { data: exData } = await supabase.from('exams').select('*').in('id', examIds);
+            if (exData) detailExams.push(...(exData as Exam[]));
           }
 
-          const [studentSnaps, examSnaps] = await Promise.all([
-            Promise.all(studentBatches),
-            Promise.all(examBatches)
-          ]);
-          
-        studentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() } as UserProfile)));
-        examSnaps.forEach(snap => snap.docs.forEach(d => detailExams.push({ id: d.id, ...d.data() } as Exam)));
-
-        setStudents(detailStudents);
-        setExams(detailExams);
+          setStudents(detailStudents);
+          setExams(detailExams);
           break;
         case 'total-students':
-          const studentsSnap2 = await getDocs(query(collection(db, 'users'), where('role', '==', 'student'), limit(50)));
-          detailStudents = studentsSnap2.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+          const { data: stdsData } = await supabase.from('users').select('*').eq('role', 'student').limit(50);
+          detailStudents = stdsData as any as UserProfile[] || [];
           setStudents(detailStudents);
           break;
         case 'total-examiners':
-          const examinersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'examiner'), limit(50)));
-          detailStudents = examinersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+          const { data: exmsData } = await supabase.from('users').select('*').eq('role', 'examiner').limit(50);
+          detailStudents = exmsData as any as UserProfile[] || [];
           setStudents(detailStudents);
           break;
         case 'active-students':
         case 'total-users':
-          const usersQuery = statId === 'total-users' ? query(collection(db, 'users'), limit(100)) : query(collection(db, 'attempts'), where('status', '==', 'in-progress'), limit(50));
           if (statId === 'total-users') {
-            const usersSnap = await getDocs(usersQuery);
-            detailStudents = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() as any } as UserProfile));
+            const { data: tUData } = await supabase.from('users').select('*').limit(100);
+            detailStudents = tUData as any as UserProfile[] || [];
             setStudents(detailStudents);
           } else {
-            const activeAttemptsSnap = await getDocs(usersQuery);
-            const activeStudentIds = Array.from(new Set(activeAttemptsSnap.docs.map(d => (d.data() as any as ExamAttempt).studentId)));
+            const { data: aAtData } = await supabase.from('attempts').select('*').eq('status', 'in-progress').limit(50);
+            const activeStudentIds = Array.from(new Set((aAtData || []).map(d => d.studentId)));
             
             if (activeStudentIds.length > 0) {
-              const activeStudentBatches = [];
-              for (let i = 0; i < activeStudentIds.length; i += 30) {
-                const batch = activeStudentIds.slice(i, i + 30);
-                activeStudentBatches.push(getDocs(query(collection(db, 'users'), where('__name__', 'in', batch))));
+              const { data: aSData } = await supabase.from('users').select('*').in('id', activeStudentIds);
+              if (aSData) {
+                detailStudents = aSData as any as UserProfile[];
+                setStudents(detailStudents);
               }
-              const activeStudentSnaps = await Promise.all(activeStudentBatches);
-              activeStudentSnaps.forEach(snap => snap.docs.forEach(d => detailStudents.push({ uid: d.id, ...d.data() as any } as UserProfile)));
-              setStudents(detailStudents);
             } else {
               setStudents([]);
             }
@@ -263,9 +250,8 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     }
 
     try {
-      const recentQuery = query(collection(db, 'attempts'), orderBy('startTime', 'desc'), limit(5));
-      const snapshot = await getDocs(recentQuery);
-      const recentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
+      const { data: recentRes } = await supabase.from('attempts').select('*').order('startTime', { ascending: false }).limit(5);
+      const recentData = (recentRes || []) as any as ExamAttempt[];
       
       const enriched = await Promise.all(recentData.map(async (attempt) => {
         const student = await metadataCache.getUser(attempt.studentId);
@@ -304,7 +290,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     if (!attemptToReset) return;
     setIsResetting(true);
     try {
-      await deleteDoc(doc(db, 'attempts', attemptToReset));
+      await supabase.from('attempts').delete().eq('id', attemptToReset);
       await logUserActivity(profile, 'RESET_ATTEMPT', `Reset attempt: ${attemptToReset}`);
       setAttemptToReset(null);
       fetchStats(); // Refresh stats after delete

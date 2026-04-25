@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, getDoc, doc, limit, orderBy } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { metadataCache } from '../lib/metadataCache';
@@ -119,17 +118,15 @@ export const ResultsView: React.FC = () => {
       }
 
       try {
-        const q = query(
-          collection(db, 'attempts'), 
-          where('studentId', '==', profile.uid),
-          limit(20),
-          orderBy('startTime', 'desc')
-        );
-        const snapshot = await getDocs(q);
-        const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
+        const { data: attemptsData } = await supabase
+          .from('attempts')
+          .select('*')
+          .eq('studentId', profile.uid)
+          .order('startTime', { ascending: false })
+          .limit(20);
         
         // Fetch enriched data
-        const enrichedAttempts = await Promise.all(attemptsData.map(async (attempt) => {
+        const enrichedAttempts = await Promise.all((attemptsData as any as ExamAttempt[] || []).map(async (attempt) => {
           const exam = await metadataCache.getExam(attempt.examId);
           return { ...attempt, exam: exam || undefined };
         }));

@@ -8,10 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Question, Exam, ExamSettings, UserProfile } from '../types';
 import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
-import { OperationType, handleFirestoreError } from '../lib/firebase';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat } from '../lib/stats';
 
@@ -51,9 +49,8 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
   useEffect(() => {
     const fetchStudents = async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'student'));
-        const querySnapshot = await getDocs(q);
-        const studentsData = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+        const { data } = await supabase.from('users').select('*').eq('role', 'student');
+        const studentsData = (data || []) as any as UserProfile[];
         setStudents(studentsData);
       } catch (error) {
         console.error('Error fetching students:', error);
@@ -110,7 +107,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
     if (endTime) newExam.endTime = new Date(endTime).getTime();
 
     try {
-      await setDoc(doc(db, 'exams', examId), newExam);
+      await supabase.from('exams').upsert(newExam as any, { onConflict: 'id' });
 
       // Update counters if it's a new exam
       if (!initialExam) {
@@ -135,7 +132,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
         onBack();
       }, 1500);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `exams/${examId}`);
+      console.error(error);
       setError('Failed to save exam. Please try again.');
     }
   };

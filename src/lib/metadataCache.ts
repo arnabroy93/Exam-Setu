@@ -1,5 +1,4 @@
-import { db } from './firebase';
-import { doc, getDoc, getDocFromCache, getDocFromServer, getDocs, query, collection, limit } from 'firebase/firestore';
+import { supabase } from './supabase';
 import { UserProfile, Exam } from '../types';
 
 class MetadataCache {
@@ -26,25 +25,16 @@ class MetadataCache {
       } catch (e) {}
     }
 
-    // 3. Firestore Cache
+    // 3. Supabase Server
     try {
-      const docRef = doc(db, 'users', uid);
-      const cachedDoc = await getDocFromCache(docRef);
-      if (cachedDoc.exists()) {
-        const profile = cachedDoc.data() as UserProfile;
-        this.cacheUser(uid, profile);
-        return profile;
-      }
-    } catch (e) {
-      // Not in cache, proceed to server
-    }
-
-    // 4. Firestore Server
-    try {
-      const docRef = doc(db, 'users', uid);
-      const serverDoc = await getDocFromServer(docRef);
-      if (serverDoc.exists()) {
-        const profile = serverDoc.data() as UserProfile;
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', uid)
+        .single();
+        
+      if (!error && data) {
+        const profile = data as UserProfile;
         this.cacheUser(uid, profile);
         return profile;
       }
@@ -73,20 +63,14 @@ class MetadataCache {
     }
 
     try {
-      const docRef = doc(db, 'exams', id);
-      const cachedDoc = await getDocFromCache(docRef);
-      if (cachedDoc.exists()) {
-        const exam = cachedDoc.data() as Exam;
-        this.cacheExam(id, exam);
-        return exam;
-      }
-    } catch (e) {}
-
-    try {
-      const docRef = doc(db, 'exams', id);
-      const serverDoc = await getDocFromServer(docRef);
-      if (serverDoc.exists()) {
-        const exam = serverDoc.data() as Exam;
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', id)
+        .single();
+        
+      if (!error && data) {
+        const exam = data as Exam;
         this.cacheExam(id, exam);
         return exam;
       }
@@ -126,12 +110,17 @@ class MetadataCache {
     }
 
     try {
-      const q = query(collection(db, 'exams'), limit(250));
-      const snapshot = await getDocs(q);
-      const exams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as Exam));
-      
-      localStorage.setItem(cacheKey, JSON.stringify({ data: exams, timestamp: Date.now() }));
-      return exams;
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*')
+        .limit(250);
+        
+      if (!error && data) {
+        const exams = data as Exam[];
+        localStorage.setItem(cacheKey, JSON.stringify({ data: exams, timestamp: Date.now() }));
+        return exams;
+      }
+      return [];
     } catch (e) {
       return [];
     }

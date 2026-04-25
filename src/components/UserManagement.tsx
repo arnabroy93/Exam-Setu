@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, updateDoc, doc, deleteDoc, writeBatch, query, orderBy, limit, startAfter, endBefore, limitToLast, getCountFromServer, where } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -40,8 +39,6 @@ export const UserManagement: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [totalUsersCount, setTotalUsersCount] = useState(0);
-  const [firstDoc, setFirstDoc] = useState<any>(null);
-  const [lastDoc, setLastDoc] = useState<any>(null);
   const [searchBuffer, setSearchBuffer] = useState<UserProfile[] | null>(null);
   const [lastSearchQuery, setLastSearchQuery] = useState('');
   
@@ -55,12 +52,9 @@ export const UserManagement: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const fetchUsers = useCallback(async (direction?: 'next' | 'prev' | 'first', force = false) => {
+  const fetchUsers = useCallback(async (newPage: number, force = false) => {
     setLoading(true);
     try {
-      const usersCol = collection(db, 'users');
-      let q;
-
       // Optimisation: Search Buffer logic
       if (debouncedSearchTerm) {
         const term = debouncedSearchTerm.trim();
@@ -69,99 +63,61 @@ export const UserManagement: React.FC = () => {
           setIsRefreshing(false);
           return;
         }
-        // Limit search fetch to 1000 to save quota while providing 'near-perfect' search
-        q = query(usersCol, orderBy('createdAt', 'desc'), limit(1000));
+        
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .or(`displayName.ilike.%${term}%,email.ilike.%${term}%`)
+          .order('createdAt', { ascending: false })
+          .limit(1000);
+          
+        setSearchBuffer((data as unknown as UserProfile[]) || []);
         setLastSearchQuery(term);
+        setCurrentPage(1);
       } else {
         setSearchBuffer(null);
         setLastSearchQuery('');
 
-        const baseConstraints = [orderBy('createdAt', 'desc'), limit(itemsPerPage)];
-        if (direction === 'next' && lastDoc) {
-          q = query(usersCol, ...baseConstraints, startAfter(lastDoc));
-        } else if (direction === 'prev' && firstDoc) {
-          q = query(usersCol, orderBy('createdAt', 'desc'), limitToLast(itemsPerPage), endBefore(firstDoc));
-        } else {
-          q = query(usersCol, ...baseConstraints);
-        }
-      }
+        const from = (newPage - 1) * itemsPerPage;
+        const to = from + itemsPerPage - 1;
 
-      // Get count if on first page or refresh or search
-      if (direction === 'first' || !direction) {
-        const cacheKey = 'total_users_count_persistent';
-        const cached = localStorage.getItem(cacheKey);
-        if (!force && cached && !isRefreshing) {
-          try {
-            const { count, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < 1800000) { // 30 mins persistent cache
-              setTotalUsersCount(count);
-            } else {
-              throw new Error('stale');
-            }
-          } catch (e) {
-            // Use static stats doc
-            const stats = await getSystemStats(force);
-            const count = stats ? stats.totalUsers : 0;
-            setTotalUsersCount(count);
-            localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
-          }
-        } else {
-          const stats = await getSystemStats(force);
-          const count = stats ? stats.totalUsers : 0;
-          setTotalUsersCount(count);
-          localStorage.setItem(cacheKey, JSON.stringify({ count, timestamp: Date.now() }));
-        }
-      }
+        const { data, count } = await supabase
+          .from('users')
+          .select('*', { count: 'exact' })
+          .order('createdAt', { ascending: false })
+          .range(from, to);
 
-      const snapshot = await getDocs(q);
-      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
-      
-      if (debouncedSearchTerm) {
-        setSearchBuffer(usersData);
-      } else {
-        setUsers(usersData);
-        setFirstDoc(snapshot.docs[0]);
-        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+        if (count !== null) setTotalUsersCount(count);
+        setUsers((data as unknown as UserProfile[]) || []);
+        setCurrentPage(newPage);
       }
-      
-      if (!direction || direction === 'first') setCurrentPage(1);
-      else if (direction === 'next') setCurrentPage(prev => prev + 1);
-      else if (direction === 'prev') setCurrentPage(prev => prev - 1);
-
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [itemsPerPage, debouncedSearchTerm, lastDoc, firstDoc, isRefreshing, searchBuffer, lastSearchQuery]); 
+  }, [itemsPerPage, debouncedSearchTerm, isRefreshing, searchBuffer, lastSearchQuery]); 
 
   useEffect(() => {
-    fetchUsers('first');
+    fetchUsers(1);
   }, [debouncedSearchTerm]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchUsers('first', true);
+    fetchUsers(1, true);
   };
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     try {
-      const user = users.find(u => u.uid === userId);
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { role: newRole });
+      const user = users.find(u => u.uid === userId || u.id === userId);
+      await supabase.from('users').update({ role: newRole }).eq('id', userId);
       
       if (user && user.role !== newRole) {
-        // Update counters for the old role and the new role
-        if (user.role === 'student') await updateStat('totalStudents', -1);
-        if (user.role === 'examiner') await updateStat('totalExaminers', -1);
-        
-        if (newRole === 'student') await updateStat('totalStudents', 1);
-        if (newRole === 'examiner') await updateStat('totalExaminers', 1);
-      }
-      
-      if (currentUserProfile && user) {
-        await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${user.email} to ${newRole}`);
+        if (currentUserProfile && user) {
+          await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${user.email} to ${newRole}`);
+        }
+        setUsers(users.map(u => (u.uid === userId || u.id === userId) ? { ...u, role: newRole } : u));
       }
     } catch (error) {
       console.error('Error updating user role:', error);
@@ -173,18 +129,9 @@ export const UserManagement: React.FC = () => {
     if (!userToDelete) return;
     setIsDeleting(true);
     try {
-      const user = users.find(u => u.uid === userToDelete);
-      await deleteDoc(doc(db, 'users', userToDelete));
+      const user = users.find(u => u.uid === userToDelete || u.id === userToDelete);
+      await supabase.from('users').delete().eq('id', userToDelete);
       
-      if (user) {
-        await updateStat('totalUsers', -1);
-        if (user.role === 'student') await updateStat('totalStudents', -1);
-        if (user.role === 'examiner') await updateStat('totalExaminers', -1);
-      }
-      
-      const cacheKey = 'total_users_count_persistent';
-      localStorage.removeItem(cacheKey);
-
       if (currentUserProfile && user) {
         await logUserActivity(currentUserProfile, 'DELETE_USER', `Deleted user account: ${user.email} (${user.displayName})`);
       }
@@ -192,6 +139,7 @@ export const UserManagement: React.FC = () => {
       setUserToDelete(null);
       setIsDeleteDialogOpen(false);
       setSelectedUserIds(prev => prev.filter(id => id !== userToDelete));
+      fetchUsers(currentPage, true);
     } catch (error) {
       console.error('Error deleting user:', error);
       alert('Failed to delete user.');
@@ -204,27 +152,24 @@ export const UserManagement: React.FC = () => {
     if (selectedUserIds.length === 0) return;
     setIsDeleting(true);
     try {
-      const batch = writeBatch(db);
       const deletedEmails: string[] = [];
+      const validIds = selectedUserIds.filter(id => id !== currentUserProfile?.uid);
       
-      selectedUserIds.forEach(userId => {
-        // Prevent deleting self in bulk
-        if (userId === currentUserProfile?.uid) return;
-        
-        const user = users.find(u => u.uid === userId);
-        if (user) deletedEmails.push(user.email);
-        batch.delete(doc(db, 'users', userId));
+      validIds.forEach(id => {
+        const u = users.find(user => (user.uid === id || user.id === id));
+        if (u) deletedEmails.push(u.email);
       });
       
-      await batch.commit();
+      await supabase.from('users').delete().in('id', validIds);
       
       if (currentUserProfile) {
-        await logUserActivity(currentUserProfile, 'BULK_DELETE_USERS', `Deleted ${deletedEmails.length} user accounts: ${deletedEmails.join(', ')}`);
+        await logUserActivity(currentUserProfile, 'BULK_DELETE_USERS', `Deleted ${deletedEmails.length} user accounts.`);
       }
       
       setSelectedUserIds([]);
       setIsBulkDelete(false);
       setIsDeleteDialogOpen(false);
+      fetchUsers(1, true);
     } catch (error) {
       console.error('Error in bulk delete:', error);
       alert('Failed to perform bulk delete.');
@@ -266,18 +211,11 @@ export const UserManagement: React.FC = () => {
   }, [totalUsersCount, itemsPerPage, debouncedSearchTerm, filteredUsers.length, searchBuffer]);
 
   const handlePageChange = (newPage: number) => {
-    if (newPage > currentPage) {
+    if (newPage >= 1 && newPage <= totalPages) {
       if (debouncedSearchTerm && searchBuffer) {
         setCurrentPage(newPage);
       } else {
-        fetchUsers('next');
-      }
-    } else if (newPage < currentPage) {
-      if (newPage < 1) return;
-      if (debouncedSearchTerm && searchBuffer) {
-        setCurrentPage(newPage);
-      } else {
-        fetchUsers('prev');
+        fetchUsers(newPage);
       }
     }
   };
@@ -287,18 +225,15 @@ export const UserManagement: React.FC = () => {
     try {
       let allUsers: UserProfile[] = [];
 
-      // Optimization: Use local buffer if searching
       if (debouncedSearchTerm && searchBuffer && searchBuffer.length > 0) {
         allUsers = filteredUsers;
       } else {
-        const usersCol = collection(db, 'users');
-        const q = query(usersCol, orderBy('createdAt', 'desc'), limit(5000));
-        const snapshot = await getDocs(q);
-        allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() as any } as UserProfile));
+        const { data } = await supabase.from('users').select('*').limit(5000);
+        allUsers = (data as unknown as UserProfile[]) || [];
       }
 
       if (selectedUserIds.length > 0) {
-        allUsers = allUsers.filter(u => selectedUserIds.includes(u.uid));
+        allUsers = allUsers.filter(u => selectedUserIds.includes(u.uid || (u as any).id));
       }
 
       return allUsers.map(user => ({
@@ -360,7 +295,7 @@ export const UserManagement: React.FC = () => {
       setSelectedUserIds([]);
     } else {
       // Don't include self in selection for deletion
-      setSelectedUserIds(displayUsers.filter(u => u.uid !== currentUserProfile?.uid).map(u => u.uid));
+      setSelectedUserIds(displayUsers.filter(u => (u.uid || u.id) !== currentUserProfile?.uid).map(u => (u.uid! || u.id!)));
     }
   };
 
@@ -475,7 +410,7 @@ export const UserManagement: React.FC = () => {
                 <TableRow>
                   <TableHead className="w-[50px] px-4">
                     <Checkbox 
-                      checked={selectedUserIds.length > 0 && selectedUserIds.length === displayUsers.filter(u => u.uid !== currentUserProfile?.uid).length}
+                      checked={selectedUserIds.length > 0 && selectedUserIds.length === displayUsers.filter(u => (u.uid || u.id) !== currentUserProfile?.uid).length}
                       onCheckedChange={toggleSelectAll}
                     />
                   </TableHead>
@@ -498,12 +433,12 @@ export const UserManagement: React.FC = () => {
                   </TableRow>
                 ) : (
                   displayUsers.map((user) => (
-                    <tr key={user.uid} className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedUserIds.includes(user.uid) ? 'bg-primary/5' : ''}`}>
+                    <tr key={user.uid || user.id} className={`border-b border-border hover:bg-muted/30 transition-colors ${selectedUserIds.includes(user.uid! || user.id!) ? 'bg-primary/5' : ''}`}>
                       <TableCell className="px-4">
                         <Checkbox 
-                          checked={selectedUserIds.includes(user.uid)} 
-                          onCheckedChange={() => toggleSelectUser(user.uid)}
-                          disabled={user.uid === currentUserProfile?.uid}
+                          checked={selectedUserIds.includes(user.uid! || user.id!)} 
+                          onCheckedChange={() => toggleSelectUser(user.uid! || user.id!)}
+                          disabled={(user.uid || user.id) === currentUserProfile?.uid}
                         />
                       </TableCell>
                       <TableCell className="px-4">
@@ -513,7 +448,7 @@ export const UserManagement: React.FC = () => {
                           </div>
                           <div>
                             <span className="font-semibold block">{user.displayName}</span>
-                            {user.uid === currentUserProfile?.uid && (
+                            {(user.uid || user.id) === currentUserProfile?.uid && (
                               <Badge variant="secondary" className="text-[10px] h-4 px-1 leading-none mt-1">You (System)</Badge>
                             )}
                           </div>
@@ -532,8 +467,8 @@ export const UserManagement: React.FC = () => {
                       <TableCell className="px-4">
                         <Select 
                           value={user.role} 
-                          onValueChange={(value: UserRole) => handleRoleChange(user.uid, value)}
-                          disabled={user.uid === currentUserProfile?.uid}
+                          onValueChange={(value: UserRole) => handleRoleChange(user.uid! || user.id!, value)}
+                          disabled={(user.uid || user.id) === currentUserProfile?.uid}
                         >
                           <SelectTrigger className="w-32 h-9 text-xs font-medium">
                             <SelectValue />
@@ -552,10 +487,10 @@ export const UserManagement: React.FC = () => {
                           className="text-destructive hover:bg-destructive/10 hover:text-destructive h-8 w-8"
                           onClick={() => {
                             setIsBulkDelete(false);
-                            setUserToDelete(user.uid);
+                            setUserToDelete(user.uid! || user.id!);
                             setIsDeleteDialogOpen(true);
                           }}
-                          disabled={user.uid === currentUserProfile?.uid}
+                          disabled={(user.uid || user.id) === currentUserProfile?.uid}
                           title="Delete User"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -597,7 +532,7 @@ export const UserManagement: React.FC = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={() => handlePageChange(currentPage + 1)}
-                disabled={loading || (debouncedSearchTerm && searchBuffer ? currentPage >= totalPages : users.length < itemsPerPage)}
+                disabled={loading || (debouncedSearchTerm && searchBuffer ? currentPage >= totalPages : currentPage >= totalPages)}
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -618,7 +553,7 @@ export const UserManagement: React.FC = () => {
             <AlertDialogDescription>
               {isBulkDelete 
                 ? `Are you sure you want to delete ${selectedUserIds.length} selected user accounts? This action will permanently remove their profiles and all associated exam history from the system.`
-                : `Are you sure you want to delete the user account for "${users.find(u => u.uid === userToDelete)?.displayName || 'this user'}"? This action cannot be undone.`}
+                : `Are you sure you want to delete the user account for "${users.find(u => u.uid === userToDelete || u.id === userToDelete)?.displayName || 'this user'}"? This action cannot be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -636,3 +571,4 @@ export const UserManagement: React.FC = () => {
     </div>
   );
 };
+

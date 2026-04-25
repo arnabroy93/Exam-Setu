@@ -1,5 +1,4 @@
-import { db } from './firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { supabase } from './supabase';
 import { UserProfile } from '../types';
 
 import { updateStat } from './stats';
@@ -11,7 +10,8 @@ export const logUserActivity = async (
 ) => {
   if (!profile) return;
   try {
-    await addDoc(collection(db, 'user_activities'), {
+    await supabase.from('user_activities').insert({
+      id: crypto.randomUUID(),
       userId: profile.uid,
       userName: profile.displayName || 'Unknown',
       userEmail: profile.email || 'Unknown',

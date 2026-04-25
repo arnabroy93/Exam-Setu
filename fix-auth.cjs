@@ -1,4 +1,7 @@
+const fs = require('fs');
 
+async function run() {
+  let code = `
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import { UserProfile, UserRole } from '../types';
@@ -34,8 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleUserSession = async (supabaseUser: any) => {
     setUser(supabaseUser);
     if (supabaseUser) {
-      const sessionKey = `acadex_session_profile_${supabaseUser.id}`;
-      const localKey = `acadex_profile_${supabaseUser.id}`;
+      const sessionKey = \`acadex_session_profile_\${supabaseUser.id}\`;
+      const localKey = \`acadex_profile_\${supabaseUser.id}\`;
       
       const sessionCached = sessionStorage.getItem(sessionKey);
       if (sessionCached) {
@@ -115,8 +118,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     
     setProfile(newProfile);
-    localStorage.setItem(`acadex_profile_${supabaseUser.id}`, JSON.stringify(newProfile));
-    await logUserActivity(newProfile, 'REGISTER', `New user registered as ${finalRole}`);
+    localStorage.setItem(\`acadex_profile_\${supabaseUser.id}\`, JSON.stringify(newProfile));
+    await logUserActivity(newProfile, 'REGISTER', \`New user registered as \${finalRole}\`);
   };
 
   const signIn = async (role: UserRole) => {
@@ -125,11 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            prompt: 'select_account',
-            hd: 'anudip.org'
-          }
+          redirectTo: window.location.origin
         }
       });
       if (error) throw error;
@@ -160,3 +159,10 @@ export const useAuth = () => {
   }
   return context;
 };
+`;
+
+  fs.writeFileSync('src/lib/AuthContext.tsx', code);
+  console.log('AuthContext Done mapping.');
+}
+
+run();

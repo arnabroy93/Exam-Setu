@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, where, orderBy, getDocs, getDoc, doc, deleteDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt, UserProfile, ActivityLog } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,7 +39,7 @@ export const LiveMonitoring: React.FC = () => {
     if (!attemptToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, 'attempts', attemptToDelete));
+      await supabase.from('attempts').delete().eq('id', attemptToDelete);
       await logUserActivity(profile, 'FORCE_RESET_ATTEMPT', `Force reset attempt: ${attemptToDelete}`);
       setAttemptToDelete(null);
     } catch (error) {
@@ -69,14 +68,21 @@ export const LiveMonitoring: React.FC = () => {
   useEffect(() => {
     if (isPaused) return;
 
-    const attemptsUnsub = onSnapshot(query(collection(db, 'attempts'), where('status', '==', 'in-progress')), (snapshot) => {
-      const attemptsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any } as ExamAttempt));
-      setActiveAttempts(attemptsData);
-      setLoading(false);
-    });
+    const channel = supabase.channel('active_attempts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts', filter: `status=eq.in-progress` }, async () => {
+          const { data } = await supabase.from('attempts').select('*').eq('status', 'in-progress');
+          if (data) setActiveAttempts(data as any as ExamAttempt[]);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+           const { data } = await supabase.from('attempts').select('*').eq('status', 'in-progress');
+           if (data) setActiveAttempts(data as any as ExamAttempt[]);
+           setLoading(false);
+        }
+      });
 
     return () => {
-      attemptsUnsub();
+      supabase.removeChannel(channel);
     };
   }, [isPaused]);
 
