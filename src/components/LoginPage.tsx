@@ -51,7 +51,38 @@ export const LoginPage: React.FC = () => {
           email: cleanEmail,
           password
         });
-        if (signInError) throw signInError;
+        
+        if (signInError) {
+          // If login fails with invalid credentials and it's the default password, 
+          // attempt auto-signup for authorized emails (except Arnab)
+          if (signInError.message.includes('Invalid login credentials') && 
+              password === 'Default1234' && 
+              cleanEmail !== 'arnab.roy@anudip.org') {
+            
+            const { error: signUpError, data: signUpData } = await supabase.auth.signUp({
+              email: cleanEmail,
+              password,
+              options: {
+                data: { 
+                  full_name: cleanEmail.split('@')[0], 
+                  role: selectedRole,
+                  password_reset_required: true
+                }
+              }
+            });
+
+            if (signUpError) throw signUpError;
+
+            if (signUpData.session) {
+              // Successfully signed up and logged in (email confirm disabled)
+              return;
+            } else {
+              // Account created but needs verification (email confirm enabled)
+              return setError('Account initialized with default password! Please check your email for verification link, then Sign In.');
+            }
+          }
+          throw signInError;
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -179,7 +210,7 @@ export const LoginPage: React.FC = () => {
                         </p>
                         <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded text-[11px] text-blue-700 leading-tight">
                           <strong>New Users:</strong> Your default password is <strong className="select-all">Default1234</strong>. 
-                          Please use <strong>Sign Up</strong> with this password for your first login.
+                          You can sign in directly using this password.
                         </div>
                       </div>
 
