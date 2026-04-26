@@ -126,150 +126,113 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-white to-teal-100 p-4">
+      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+      
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md relative z-10"
       >
-        <Card className="border-2 border-primary/10 shadow-xl">
+        <Card className="border border-teal-100 shadow-2xl bg-white/80 backdrop-blur-2xl rounded-3xl text-teal-950">
           <CardHeader className="text-center space-y-2">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-2">
-              <Layers className="w-10 h-10 text-primary" />
+            <div className="mx-auto w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mb-4 backdrop-blur-md border border-teal-200">
+              <Layers className="w-10 h-10 text-teal-600" />
             </div>
-            <CardTitle className="text-3xl font-bold tracking-tight text-primary flex items-center justify-center gap-2">
-              <Layers className="w-8 h-8" />
+            <CardTitle className="text-4xl font-extrabold tracking-tighter text-teal-950">
               AcadEx
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Your gateway to seamless online examinations
-            </CardDescription>
-            <p className="text-sm text-muted-foreground mt-4 px-4 text-justify">
+            <CardDescription className="text-teal-700 text-sm mt-2 leading-relaxed">
               AcadEx is a dedicated assessment platform designed to evaluate and enhance knowledge through structured examinations. It serves as an internal platform of Anudip Foundation, aimed at ensuring effective learning outcomes and continuous skill development.
-            </p>
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm text-center">
+              <div className="p-3 bg-red-100 border border-red-200 rounded-xl text-red-800 text-sm text-center backdrop-blur-sm">
                 {error}
               </div>
             )}
             <Tabs defaultValue="student" onValueChange={(v) => setSelectedRole(v as UserRole)} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-12">
-                <TabsTrigger value="student" className="flex items-center gap-2">
-                  <GraduationCap className="w-4 h-4" />
+              <TabsList className="grid w-full grid-cols-3 h-12 bg-teal-50 p-1 rounded-2xl">
+                <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
                   Student
                 </TabsTrigger>
-                <TabsTrigger value="examiner" className="flex items-center gap-2">
-                  <UserCog className="w-4 h-4" />
+                <TabsTrigger value="examiner" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
                   Examiner
                 </TabsTrigger>
-                <TabsTrigger value="admin" className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4" />
+                <TabsTrigger value="admin" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
                   Admin
                 </TabsTrigger>
               </TabsList>
               
-              <div className="mt-6 space-y-4">
-                  <div className="p-4 bg-primary/5 border-2 border-primary/20 rounded-xl space-y-5">
-                    {/* Common Email Input */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="name@anudip.org"
-                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      />
+              <div className="mt-8 space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-teal-700 ml-1">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="name@anudip.org"
+                      className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    />
+                  </div>
+
+                  <Button 
+                    onClick={handleMagicLink}
+                    disabled={loading} 
+                    className="w-full h-12 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold"
+                  >
+                    Send Magic Link
+                  </Button>
+
+                  <div className="relative py-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-teal-200" />
                     </div>
-
-                    {/* Magic Link Section */}
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground text-center font-medium">
-                        Use your @anudip.org email with a magic link
-                      </p>
-                      <Button 
-                        onClick={handleMagicLink}
-                        disabled={loading} 
-                        className="w-full h-11 font-semibold"
-                      >
-                        Send Magic Link to Email
-                      </Button>
-                    </div>
-
-                      <div className="relative py-2">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs">
-                        <span className="bg-primary/5 px-2 text-muted-foreground font-bold uppercase">OR</span>
-                      </div>
-                    </div>
-
-                    {/* Direct Login Section */}
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-semibold text-lg text-primary">Direct Login</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Use your @anudip.org email with a password
-                        </p>
-
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground ml-1">Email Address</label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="name@anudip.org"
-                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground ml-1">Password (for direct login)</label>
-                        <input
-                          type="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3 pt-2">
-                        <Button 
-                          onClick={() => handleEmailAuth(false)}
-                          disabled={loading}
-                          className="h-11 font-semibold"
-                          variant="secondary"
-                        >
-                          Sign In
-                        </Button>
-                        <Button 
-                          onClick={() => handleEmailAuth(true)}
-                          disabled={loading}
-                          variant="outline"
-                          className="h-11 font-semibold bg-background"
-                        >
-                          Sign Up
-                        </Button>
-                      </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-white px-2 text-teal-500 font-bold uppercase">OR</span>
                     </div>
                   </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-teal-700 ml-1">Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button 
+                        onClick={() => handleEmailAuth(false)}
+                        disabled={loading}
+                        className="h-12 rounded-2xl bg-teal-700 text-white hover:bg-teal-800 font-semibold"
+                      >
+                        Sign In
+                      </Button>
+                      <Button 
+                        onClick={() => handleEmailAuth(true)}
+                        disabled={loading}
+                        className="h-12 rounded-2xl bg-teal-100 hover:bg-teal-200 text-teal-900 font-semibold border border-teal-200"
+                      >
+                        Sign Up
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </Tabs>
           </CardContent>
         </Card>
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          By signing in, you agree to our Terms of Service and Privacy Policy.
+        <p className="mt-8 text-center text-sm text-teal-700">
+          By signing in, you agree to our Terms of Service & Privacy Policy.
         </p>
-        <footer className="mt-8 text-center text-xs text-muted-foreground">
-          An Initiative by Academic Excellence Team - Anudip Foundation
-        </footer>
       </motion.div>
     </div>
   );
