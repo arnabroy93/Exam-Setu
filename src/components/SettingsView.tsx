@@ -289,7 +289,7 @@ export const SettingsView: React.FC = () => {
                     <div>
                       <p className="text-sm font-medium text-destructive">Full Database Export</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Download a complete JSON snapshot of all system data including users, exams, attempts, and logs. This acts as a secure restore point.
+                        Download a complete SQL snapshot of all system data including users, exams, attempts, and logs. This acts as a secure restore point.
                       </p>
                     </div>
                     <Button variant="destructive" size="sm" onClick={handleExportDatabase} disabled={isExporting}>
@@ -303,24 +303,6 @@ export const SettingsView: React.FC = () => {
                   </div>
                 </div>
                 
-                <div className="p-4 rounded-xl border border-border bg-muted/30">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium text-primary">Migrate to Supabase</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Push the current Firebase database state directly to the configured Supabase Project. (Make sure you created the tables via the SQL script first).
-                      </p>
-                    </div>
-                    <Button size="sm" onClick={handleMigrateToSupabase} disabled={isExporting}>
-                      {isExporting ? 'Migrating...' : (
-                        <>
-                          <CloudUpload className="w-4 h-4 mr-2" />
-                          Start Migration
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           )}
