@@ -75,28 +75,27 @@ export const SettingsView: React.FC = () => {
     if (profile?.role !== 'admin') return;
     setIsExporting(true);
     try {
-      const dbExport: any = {
-        users: [],
-        exams: [],
-        attempts: [],
-        user_activities: [],
-        timestamp: new Date().toISOString()
-      };
+      const tables = ['users', 'exams', 'attempts', 'user_activities'];
       
-      const { data: uData } = await supabase.from('users').select('*');
-      dbExport.users = uData || [];
-      const { data: eData } = await supabase.from('exams').select('*');
-      dbExport.exams = eData || [];
-      const { data: aData } = await supabase.from('attempts').select('*');
-      dbExport.attempts = aData || [];
-      const { data: actsData } = await supabase.from('user_activities').select('*');
-      dbExport.user_activities = actsData || [];
+      // Actually let's just combine all into one big CSV download or a text file.
+      // For simplicity, let's create a single text dump with tables separated.
       
-      const blob = new Blob([JSON.stringify(dbExport, null, 2)], { type: 'application/json' });
+      let finalContent = `--- Database Backup ${new Date().toISOString()} ---\n\n`;
+
+      for (const table of tables) {
+        const { data } = await supabase.from(table).select('*');
+        if (data && data.length > 0) {
+          finalContent += `--- Table: ${table} ---\n`;
+          finalContent += JSON.stringify(data, null, 2);
+          finalContent += `\n\n`;
+        }
+      }
+
+      const blob = new Blob([finalContent], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Examly_Backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `Examly_Backup_${new Date().toISOString().split('T')[0]}.sql`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -297,7 +296,7 @@ export const SettingsView: React.FC = () => {
                       {isExporting ? 'Exporting...' : (
                         <>
                           <Download className="w-4 h-4 mr-2" />
-                          Export JSON
+                          Export SQL Dump
                         </>
                       )}
                     </Button>
