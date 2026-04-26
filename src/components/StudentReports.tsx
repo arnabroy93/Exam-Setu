@@ -48,6 +48,7 @@ export const StudentReports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
+  const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all'); // Add this
 
   // Main List Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,15 +65,17 @@ export const StudentReports: React.FC = () => {
 
   const studentAttempts = useMemo(() => {
     if (!selectedStudent) return [];
-    return attempts
-      .filter(a => a.studentId === selectedStudent.uid)
-      .sort((a, b) => b.startTime - a.startTime);
-  }, [attempts, selectedStudent]);
+    let filtered = attempts.filter(a => a.studentId === selectedStudent.uid);
+    if (selectedExamFilter !== 'all') {
+      filtered = filtered.filter(a => a.examId === selectedExamFilter);
+    }
+    return filtered.sort((a, b) => b.startTime - a.startTime);
+  }, [attempts, selectedStudent, selectedExamFilter]);
 
-  // Reset detail page when student changes
+  // Reset detail page when student changes or filter changes
   useEffect(() => {
     setDetailCurrentPage(1);
-  }, [selectedStudent]);
+  }, [selectedStudent, selectedExamFilter]);
   
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
@@ -300,15 +303,18 @@ export const StudentReports: React.FC = () => {
     }
   };
 
-  const getStudentStats = (studentId: string) => {
-    const studentAttempts = attempts.filter(a => a.studentId === studentId && (a.status === 'submitted' || a.status === 'graded'));
+  const getStudentStats = (studentId: string, examFilter: string = 'all') => {
+    let studentAttempts = attempts.filter(a => a.studentId === studentId && (a.status === 'submitted' || a.status === 'graded'));
     
+    if (examFilter !== 'all') {
+      studentAttempts = studentAttempts.filter(a => a.examId === examFilter);
+    }
+
     // Group attempts by examId to find the best attempt for each exam
     const attemptsByExam: Record<string, ExamAttempt> = {};
     studentAttempts.forEach(attempt => {
-      const exam = exams.find(e => e.id === attempt.examId);
       const currentBest = attemptsByExam[attempt.examId];
-      const attemptScore = calculateTotalObtained(attempt, exam);
+      const attemptScore = calculateTotalObtained(attempt, exams.find(e => e.id === attempt.examId));
       const currentBestScore = currentBest ? calculateTotalObtained(currentBest, exams.find(e => e.id === currentBest.examId)) : -1;
       
       if (!currentBest || attemptScore > currentBestScore) {
@@ -996,7 +1002,7 @@ export const StudentReports: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {(() => {
-            const stats = getStudentStats(selectedStudent.uid);
+            const stats = getStudentStats(selectedStudent.uid, selectedExamFilter);
             return (
               <>
                 <Card className="bg-primary/5 border-primary/10">
@@ -1392,6 +1398,14 @@ export const StudentReports: React.FC = () => {
           <p className="text-muted-foreground">Monitor student performance and anti-cheating logs.</p>
         </div>
         <div className="flex items-center gap-2">
+          <select 
+             className="mr-3 p-1.5 border rounded-md text-sm" 
+             value={selectedExamFilter} 
+             onChange={(e) => setSelectedExamFilter(e.target.value)}
+           >
+             <option value="all">All Exams</option>
+             {exams.map(exam => <option key={exam.id} value={exam.id}>{exam.title}</option>)}
+           </select>
           <Button 
             variant="outline" 
             size="sm" 
@@ -1511,7 +1525,7 @@ export const StudentReports: React.FC = () => {
                   </TableRow>
                 ) : (
                   mainPaginatedStudents.map((student) => {
-                    const stats = getStudentStats(student.uid);
+                    const stats = getStudentStats(student.uid, selectedExamFilter);
                     return (
                       <TableRow key={student.uid} className="cursor-pointer hover:bg-muted/50 transition-colors">
                         <TableCell onClick={(e) => e.stopPropagation()}>
