@@ -51,7 +51,9 @@ export const UserManagement: React.FC = () => {
   const [userToReset, setUserToReset] = useState<UserProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [isBulkReset, setIsBulkReset] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const fetchUsers = useCallback(async (newPage: number, force = false) => {
@@ -204,6 +206,32 @@ export const UserManagement: React.FC = () => {
       alert('Failed to reset password: ' + error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBulkResetPassword = async () => {
+    if (selectedUserIds.length === 0) return;
+    setIsResetting(true);
+    try {
+      await Promise.all(selectedUserIds.map(async (id) => {
+        await supabase.rpc('reset_user_password', {
+          target_user_id: id,
+          new_password: 'Default1234'
+        });
+      }));
+
+      if (currentUserProfile) {
+        await logUserActivity(currentUserProfile, 'BULK_RESET_PASSWORD', `Admin reset passwords for ${selectedUserIds.length} users.`);
+      }
+
+      setSelectedUserIds([]);
+      setIsBulkReset(false);
+      alert(`Successfully reset passwords for ${selectedUserIds.length} users to "Default1234".`);
+    } catch (error: any) {
+      console.error('Error in bulk reset:', error);
+      alert('Failed to perform bulk reset: ' + error.message);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -388,19 +416,31 @@ export const UserManagement: React.FC = () => {
             />
           </div>
           {selectedUserIds.length > 0 && (
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              className="gap-2 animate-in zoom-in duration-200"
-              onClick={() => {
-                setIsBulkDelete(true);
-                setUserToDelete(null);
-                setIsDeleteDialogOpen(true);
-              }}
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete ({selectedUserIds.length})
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 animate-in zoom-in duration-200 border-primary/20"
+                onClick={() => setIsBulkReset(true)}
+                disabled={isResetting}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reset ({selectedUserIds.length})
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                className="gap-2 animate-in zoom-in duration-200"
+                onClick={() => {
+                  setIsBulkDelete(true);
+                  setUserToDelete(null);
+                  setIsDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete ({selectedUserIds.length})
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -630,6 +670,28 @@ export const UserManagement: React.FC = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetPassword}>
               Reset Password
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Reset Password Confirmation Dialog */}
+      <AlertDialog open={isBulkReset} onOpenChange={setIsBulkReset}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2 text-primary mb-2">
+              <RefreshCw className="w-5 h-5" />
+              <AlertDialogTitle>Bulk Reset Passwords</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              This will reset the passwords for all <strong>{selectedUserIds.length}</strong> selected users to <strong>Default1234</strong>.
+              These users will be required to change their password immediately upon their next login.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkResetPassword} disabled={isResetting}>
+              {isResetting ? 'Resetting...' : 'Reset Passwords'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
