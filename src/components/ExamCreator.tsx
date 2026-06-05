@@ -126,6 +126,13 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
         }
       }
       
+      // Clear relevant caches
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('exam_management') || key.includes('student_dashboard')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
       const action = initialExam ? 'UPDATE_EXAM' : 'CREATE_EXAM';
       await logUserActivity(profile, action, `${initialExam ? 'Updated' : 'Created'} exam: ${title}`);
       
