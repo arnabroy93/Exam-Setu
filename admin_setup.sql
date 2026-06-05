@@ -5,9 +5,9 @@
 -- reset user passwords securely directly from the User Management panel.
 -- ==============================================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
-CREATE OR REPLACE FUNCTION reset_user_password(target_user_id TEXT, new_password TEXT)
+CREATE OR REPLACE FUNCTION reset_user_password(target_email TEXT, new_password TEXT)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -16,8 +16,8 @@ AS $$
 BEGIN
   -- 1. Update the user's password using the proper bcrypt salt
   UPDATE auth.users
-  SET encrypted_password = crypt(new_password, gen_salt('bf'))
-  WHERE id = target_user_id::uuid;
+  SET encrypted_password = extensions.crypt(new_password, extensions.gen_salt('bf'))
+  WHERE email = target_email;
   
   -- 2. Mark the user as requiring a password reset on their next login
   -- This sets password_reset_required flag to true inside raw_app_meta_data
@@ -25,6 +25,6 @@ BEGIN
   SET raw_app_meta_data = 
       COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"password_reset_required": true}'::jsonb,
       updated_at = now()
-  WHERE id = target_user_id::uuid;
+  WHERE email = target_email;
 END;
 $$;
