@@ -56,7 +56,7 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
   // Requirement: If both MCQ and long questions are there, until long questions are graded (status === 'submitted')
   // return only auto-score (MCQ).
   if (exam && attempt.status === 'submitted') {
-    const hasSubjective = exam.questions.some(q => q.type === 'short' || q.type === 'long');
+    const hasSubjective = exam.questions.some(q => q.type === 'short' || q.type === 'long' || q.type === 'practical');
     if (hasSubjective) {
       return autoScore;
     }
@@ -68,7 +68,7 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
 };
 
 export const calculateEffectiveFullMarks = (questions: Question[], attemptStatus: string): number => {
-  const hasSubjective = questions.some(q => q.type === 'short' || q.type === 'long');
+  const hasSubjective = questions.some(q => q.type === 'short' || q.type === 'long' || q.type === 'practical');
   
   // Requirement: Until long questions are graded (status === 'submitted'), marks should be based on MCQ
   if (hasSubjective && attemptStatus === 'submitted') {

@@ -7,6 +7,7 @@ import { logUserActivity } from './activityLogger';
 interface AuthContextType {
   user: any | null;
   profile: UserProfile | null;
+  providerToken: string | null;
   loading: boolean;
   signIn: (role: UserRole) => Promise<void>;
   signOut: () => Promise<void>;
@@ -17,14 +18,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [providerToken, setProviderToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      setProviderToken(session?.provider_token || null);
       handleUserSession(session?.user || null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setProviderToken(session?.provider_token || null);
       handleUserSession(session?.user || null);
     });
 
@@ -152,6 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
+          scopes: 'https://www.googleapis.com/auth/drive',
           redirectTo: window.location.origin,
           queryParams: {
             prompt: 'select_account',
@@ -174,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile, providerToken, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

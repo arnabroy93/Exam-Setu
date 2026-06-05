@@ -14,7 +14,7 @@ export interface UserProfile {
 
 export interface Question {
   id: string;
-  type: 'mcq' | 'short' | 'long' | 'fill' | 'boolean';
+  type: 'mcq' | 'short' | 'long' | 'fill' | 'boolean' | 'practical';
   text: string;
   options?: string[]; // For MCQ
   correctAnswer?: string | string[]; // For MCQ, boolean, fill

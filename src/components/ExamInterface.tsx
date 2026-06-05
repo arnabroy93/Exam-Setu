@@ -10,6 +10,7 @@ import { useAuth } from '../lib/AuthContext';
 import { calculateAutoScore } from '../lib/gradingUtils';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat } from '../lib/stats';
+import { DriveFileUploader } from './DriveFileUploader';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ exam, onFinish }) => {
-  const { profile } = useAuth();
+  const { profile, providerToken } = useAuth();
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [timeLeft, setTimeLeft] = useState(exam.duration * 60);
@@ -735,6 +736,21 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                         value={answers[q.id] || ''}
                         onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
                       />
+                    )}
+
+                    {q.type === 'practical' && (
+                      <div className="mt-4">
+                        <DriveFileUploader
+                          providerToken={providerToken}
+                          existingSubmission={answers[q.id]}
+                          onUploadSuccess={(fileInfo) => setAnswers({ ...answers, [q.id]: fileInfo })}
+                          onRemove={() => {
+                            const newAnswers = { ...answers };
+                            delete newAnswers[q.id];
+                            setAnswers(newAnswers);
+                          }}
+                        />
+                      </div>
                     )}
                   </CardContent>
                 </Card>

@@ -327,7 +327,21 @@ export const ResultsView: React.FC = () => {
                       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div className="p-2 rounded bg-muted/50">
                           <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Your Answer:</p>
-                          <p>{studentAnswer || <span className="italic text-muted-foreground">No answer</span>}</p>
+                          {q.type === 'practical' && studentAnswer ? (
+                            <div className="flex gap-2 items-center">
+                              <span className="font-medium text-xs break-all">{studentAnswer.name}</span>
+                              <a 
+                                href={studentAnswer.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-xs text-primary hover:underline font-medium bg-primary/10 px-2 py-1 rounded"
+                              >
+                                View File
+                              </a>
+                            </div>
+                          ) : (
+                            <p>{studentAnswer || <span className="italic text-muted-foreground">No answer</span>}</p>
+                          )}
                         </div>
                         {(q.type === 'mcq' || q.type === 'boolean') && (
                           <div className="p-2 rounded bg-green-500/5 border border-green-500/10">

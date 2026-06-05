@@ -126,8 +126,8 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-white to-teal-100 p-4">
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+    <div className="min-h-screen flex items-center justify-center bg-teal-50 p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-100 via-white to-teal-50"></div>
       
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -135,33 +135,33 @@ export const LoginPage: React.FC = () => {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md relative z-10"
       >
-        <Card className="border border-teal-100 shadow-2xl bg-white/80 backdrop-blur-2xl rounded-3xl text-teal-950">
+        <Card className="border border-teal-200 shadow-xl bg-white/90 backdrop-blur-sm rounded-3xl text-teal-950">
           <CardHeader className="text-center space-y-2">
-            <div className="mx-auto w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mb-4 backdrop-blur-md border border-teal-200">
-              <Layers className="w-10 h-10 text-teal-600" />
+            <div className="mx-auto w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mb-4 border border-teal-200">
+              <Layers className="w-10 h-10 text-teal-700" />
             </div>
             <CardTitle className="text-4xl font-extrabold tracking-tighter text-teal-950">
               AcadEx
             </CardTitle>
-            <CardDescription className="text-teal-700 text-sm mt-2 leading-relaxed">
+            <CardDescription className="text-teal-900 text-sm mt-2 leading-relaxed">
               AcadEx is a dedicated assessment platform designed to evaluate and enhance knowledge through structured examinations. It serves as an internal platform of Anudip Foundation, aimed at ensuring effective learning outcomes and continuous skill development.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {error && (
-              <div className="p-3 bg-red-100 border border-red-200 rounded-xl text-red-800 text-sm text-center backdrop-blur-sm">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-900 text-sm text-center">
                 {error}
               </div>
             )}
             <Tabs defaultValue="student" onValueChange={(v) => setSelectedRole(v as UserRole)} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-12 bg-teal-50 p-1 rounded-2xl">
-                <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
+              <TabsList className="grid w-full grid-cols-3 h-12 bg-teal-100 p-1 rounded-2xl">
+                <TabsTrigger value="student" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white data-[state=inactive]:text-teal-900">
                   Student
                 </TabsTrigger>
-                <TabsTrigger value="examiner" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
+                <TabsTrigger value="examiner" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white data-[state=inactive]:text-teal-900">
                   Examiner
                 </TabsTrigger>
-                <TabsTrigger value="admin" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white">
+                <TabsTrigger value="admin" className="rounded-xl data-[state=active]:bg-teal-600 data-[state=active]:text-white data-[state=inactive]:text-teal-900">
                   Admin
                 </TabsTrigger>
               </TabsList>
@@ -169,20 +169,20 @@ export const LoginPage: React.FC = () => {
               <div className="mt-8 space-y-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-teal-700 ml-1">Email</label>
+                    <label className="text-sm font-semibold text-teal-900 ml-1">Email</label>
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@anudip.org"
-                      className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   </div>
 
                   <Button 
                     onClick={handleMagicLink}
                     disabled={loading} 
-                    className="w-full h-12 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-semibold"
+                    className="w-full h-12 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white font-semibold"
                   >
                     Send Magic Link
                   </Button>
@@ -192,19 +192,19 @@ export const LoginPage: React.FC = () => {
                       <span className="w-full border-t border-teal-200" />
                     </div>
                     <div className="relative flex justify-center text-xs">
-                      <span className="bg-white px-2 text-teal-500 font-bold uppercase">OR</span>
+                      <span className="bg-white px-2 text-teal-600 font-bold uppercase">OR</span>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-teal-700 ml-1">Password</label>
+                      <label className="text-sm font-semibold text-teal-900 ml-1">Password</label>
                       <input
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white px-4 py-2 text-teal-950 placeholder:text-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
                     
@@ -230,9 +230,12 @@ export const LoginPage: React.FC = () => {
             </Tabs>
           </CardContent>
         </Card>
-        <p className="mt-8 text-center text-sm text-teal-700">
+        <p className="mt-8 text-center text-sm text-teal-900 font-medium">
           By signing in, you agree to our Terms of Service & Privacy Policy.
         </p>
+        <footer className="mt-4 text-center text-xs text-teal-900 font-medium">
+          An Initiative By Academic Excellence Team - Anudip Foundation
+        </footer>
       </motion.div>
     </div>
   );

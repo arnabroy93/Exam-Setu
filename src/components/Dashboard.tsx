@@ -149,7 +149,7 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
         <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-card mt-auto">
-          An Initiative by Academic Excellence Team - Anudip Foundation
+          An Initiative By Academic Excellence Team - Anudip Foundation
         </footer>
       </main>
     </div>

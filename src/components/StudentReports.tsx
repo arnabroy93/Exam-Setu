@@ -1313,7 +1313,7 @@ export const StudentReports: React.FC = () => {
         <div className="max-w-4xl mx-auto space-y-8 pb-12">
           {(() => {
             const exam = exams.find(e => e.id === gradingAttempt.examId);
-            const subjectiveQuestions = exam?.questions.filter(q => q.type === 'short' || q.type === 'long') || [];
+            const subjectiveQuestions = exam?.questions.filter(q => q.type === 'short' || q.type === 'long' || q.type === 'practical') || [];
             
             if (subjectiveQuestions.length === 0) {
               return (
@@ -1343,9 +1343,23 @@ export const StudentReports: React.FC = () => {
                     <CardContent className="space-y-6">
                       <div className="p-6 bg-muted/30 rounded-2xl border-2 border-dashed">
                         <p className="text-xs font-bold text-muted-foreground uppercase mb-3 tracking-wider">Student's Response:</p>
-                        <p className="text-base leading-relaxed whitespace-pre-wrap">
-                          {gradingAttempt.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
-                        </p>
+                        {q.type === 'practical' && gradingAttempt.answers[q.id] ? (
+                          <div className="flex gap-2 items-center bg-background p-3 rounded-lg border">
+                            <span className="font-medium text-sm break-all">{gradingAttempt.answers[q.id].name}</span>
+                            <a 
+                              href={gradingAttempt.answers[q.id].url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-xs text-primary hover:underline font-medium bg-primary/10 px-3 py-1.5 rounded-md"
+                            >
+                              View Submission File
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-base leading-relaxed whitespace-pre-wrap">
+                            {gradingAttempt.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
+                          </p>
+                        )}
                       </div>
                       
                       <div className="flex flex-col md:flex-row items-end gap-6 pt-4 border-t">

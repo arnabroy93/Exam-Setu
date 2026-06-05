@@ -375,6 +375,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                       <SelectItem value="short">Short Answer</SelectItem>
                       <SelectItem value="long">Long Answer</SelectItem>
                       <SelectItem value="boolean">True/False</SelectItem>
+                      <SelectItem value="practical">Practical / File Upload</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
