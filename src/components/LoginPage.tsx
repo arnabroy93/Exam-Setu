@@ -11,12 +11,14 @@ export const LoginPage: React.FC = () => {
   const { loading } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleEmailAuth = async (isSignUp: boolean) => {
     setError(null);
+    setSuccessMsg(null);
     const cleanEmail = email.trim();
     if (!cleanEmail) return setError('Please enter your email address');
     
@@ -44,7 +46,7 @@ export const LoginPage: React.FC = () => {
           }
         });
         if (signUpError) throw signUpError;
-        if (!data.session) setError('Signup successful! If you have email confirmation enabled in Supabase, please check your inbox. Otherwise, you can now Sign In.');
+        if (!data.session) setSuccessMsg('Signup successful! If you have email confirmation enabled in Supabase, please check your inbox. Otherwise, you can now Sign In.');
       } else {
         if (!password) return setError('Please enter your password');
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -85,7 +87,7 @@ export const LoginPage: React.FC = () => {
             if (signUpData.session) {
               return; // Logged in
             } else {
-              return setError('Account initialized! Please check your email for a verification link to activate your direct login access.');
+              return setSuccessMsg('Account initialized! Please check your email for a verification link to activate your direct login access.');
             }
           }
           throw signInError;
@@ -98,6 +100,7 @@ export const LoginPage: React.FC = () => {
 
   const handleMagicLink = async () => {
     setError(null);
+    setSuccessMsg(null);
     const cleanEmail = email.trim();
     if (!cleanEmail) return setError('Please enter your email address');
     
@@ -121,7 +124,7 @@ export const LoginPage: React.FC = () => {
     if (error) {
       setError(error.message.toLowerCase().includes('rate limit') ? 'Too many attempts! Please wait.' : error.message);
     } else {
-      setError('Success! Check your email inbox for the magic link.');
+      setSuccessMsg('Success! Check your email inbox for the magic link.');
     }
   };
 
@@ -151,6 +154,11 @@ export const LoginPage: React.FC = () => {
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-900 text-sm text-center">
                 {error}
+              </div>
+            )}
+            {successMsg && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-900 text-sm text-center">
+                {successMsg}
               </div>
             )}
             <Tabs defaultValue="student" onValueChange={(v) => setSelectedRole(v as UserRole)} className="w-full">
