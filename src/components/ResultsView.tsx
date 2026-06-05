@@ -306,7 +306,11 @@ export const ResultsView: React.FC = () => {
                       <div className="flex justify-between items-start gap-4">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-muted-foreground uppercase">Question {idx + 1}</p>
-                          <p className="font-medium">{q.text}</p>
+                          {q.type === 'practical' ? (
+                            <div className="font-medium" dangerouslySetInnerHTML={{ __html: q.text }} />
+                          ) : (
+                            <p className="font-medium">{q.text}</p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
                           <Badge variant="outline" className="shrink-0">

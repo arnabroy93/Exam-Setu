@@ -684,7 +684,11 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                       <Badge variant="secondary">{q.points} Marks</Badge>
                     </div>
                     <CardTitle className="text-2xl mt-4 leading-relaxed">
-                      {q.text}
+                      {q.type === 'practical' ? (
+                        <div dangerouslySetInnerHTML={{ __html: q.text }} />
+                      ) : (
+                        q.text
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-6">

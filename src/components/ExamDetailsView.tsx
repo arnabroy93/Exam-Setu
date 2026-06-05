@@ -148,7 +148,14 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ exam, onBack }
                   </Badge>
                   <span className="text-xs font-bold text-primary">{q.points} Marks</span>
                 </div>
-                <CardTitle className="text-lg mt-2">{idx + 1}. {q.text}</CardTitle>
+                {q.type === 'practical' ? (
+                  <CardTitle className="text-lg mt-2 flex gap-2">
+                    <span>{idx + 1}.</span>
+                    <div dangerouslySetInnerHTML={{ __html: q.text }} />
+                  </CardTitle>
+                ) : (
+                  <CardTitle className="text-lg mt-2">{idx + 1}. {q.text}</CardTitle>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 {q.type === 'mcq' && (

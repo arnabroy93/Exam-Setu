@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Question, Exam, ExamSettings, UserProfile } from '../types';
 import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users } from 'lucide-react';
+import { RichTextEditor } from './RichTextEditor';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
@@ -353,7 +354,11 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-2">
                   <Label>Question {index + 1}</Label>
-                  <Input value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} placeholder="Enter question text..." />
+                  {q.type === 'practical' ? (
+                    <RichTextEditor value={q.text} onChange={(val) => updateQuestion(q.id, { text: val })} placeholder="Enter question text (supports rich text pasting)..." />
+                  ) : (
+                    <Textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} placeholder="Enter question text..." className="min-h-[100px]" />
+                  )}
                 </div>
                 <div className="w-24 space-y-2">
                   <Label>Marks</Label>

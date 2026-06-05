@@ -1333,7 +1333,11 @@ export const StudentReports: React.FC = () => {
                       <div className="flex justify-between items-start">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-primary uppercase tracking-widest">Question {idx + 1}</p>
-                          <CardTitle className="text-lg leading-relaxed">{q.text}</CardTitle>
+                          {q.type === 'practical' ? (
+                            <CardTitle className="text-lg leading-relaxed"><div dangerouslySetInnerHTML={{ __html: q.text }} /></CardTitle>
+                          ) : (
+                            <CardTitle className="text-lg leading-relaxed">{q.text}</CardTitle>
+                          )}
                         </div>
                         <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
                           {q.points} Max Marks
