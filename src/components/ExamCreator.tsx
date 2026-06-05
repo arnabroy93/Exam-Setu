@@ -362,7 +362,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                 <div className="flex-1 space-y-2">
                   <Label>Question {index + 1}</Label>
                   {q.type === 'practical' ? (
-                    <RichTextEditor value={q.text} onChange={(val) => updateQuestion(q.id, { text: val })} placeholder="Enter question text (supports rich text pasting)..." />
+                    <RichTextEditor value={q.text} onChange={(val) => updateQuestion(q.id, { text: val })} placeholder="Enter question text (paste will insert as plain text)..." />
                   ) : (
                     <Textarea value={q.text} onChange={(e) => updateQuestion(q.id, { text: e.target.value })} placeholder="Enter question text..." className="min-h-[100px]" />
                   )}
