@@ -32,6 +32,9 @@ export const LoginPage: React.FC = () => {
     const { supabase } = await import('../lib/supabase');
     
     try {
+      const isDefaultPassword = (selectedRole === 'student' && password === 'Default@1234') || 
+                               (selectedRole !== 'student' && password === 'Exam@2026');
+      
       if (isSignUp) {
         if (password.length < 6) return setError('Password must be at least 6 characters');
         const { error: signUpError, data } = await supabase.auth.signUp({
@@ -41,7 +44,7 @@ export const LoginPage: React.FC = () => {
             data: { 
               full_name: cleanEmail.split('@')[0], 
               role: selectedRole,
-              password_reset_required: password === 'Default1234' && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)
+              password_reset_required: isDefaultPassword && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)
             }
           }
         });
@@ -64,7 +67,7 @@ export const LoginPage: React.FC = () => {
                            isUnconfirmed;
           
           // If login fails (including unconfirmed email) and it's the default password for an authorized domain
-          if (isInvalid && password === 'Default1234' && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)) {
+          if (isInvalid && isDefaultPassword && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)) {
             const { error: signUpError, data: signUpData } = await supabase.auth.signUp({
               email: cleanEmail,
               password,

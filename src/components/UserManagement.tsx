@@ -186,10 +186,11 @@ export const UserManagement: React.FC = () => {
     if (!userToReset) return;
     setLoading(true);
     try {
+      const defaultPwd = userToReset.role === 'student' ? 'Default@1234' : 'Exam@2026';
       // Use the RPC function created in the SQL Step
       const { error } = await supabase.rpc('reset_user_password', {
         target_user_id: String(userToReset.uid || (userToReset as any).id),
-        new_password: 'Default1234'
+        new_password: defaultPwd
       });
 
       if (error) throw error;
@@ -200,7 +201,7 @@ export const UserManagement: React.FC = () => {
 
       setIsResetPasswordOpen(false);
       setUserToReset(null);
-      alert(`Password for ${userToReset.email} has been reset to "Default1234" and they will be forced to change it on next login.`);
+      alert(`Password for ${userToReset.email} has been reset to "${defaultPwd}" and they will be forced to change it on next login.`);
     } catch (error: any) {
       console.error('Error resetting password:', error);
       alert('Failed to reset password: ' + error.message);
@@ -214,9 +215,11 @@ export const UserManagement: React.FC = () => {
     setIsResetting(true);
     try {
       await Promise.all(selectedUserIds.map(async (id) => {
+        const user = users.find(u => u.uid === id || (u as any).id === id);
+        const defaultPwd = user?.role === 'student' ? 'Default@1234' : 'Exam@2026';
         await supabase.rpc('reset_user_password', {
           target_user_id: id,
-          new_password: 'Default1234'
+          new_password: defaultPwd
         });
       }));
 
@@ -226,7 +229,7 @@ export const UserManagement: React.FC = () => {
 
       setSelectedUserIds([]);
       setIsBulkReset(false);
-      alert(`Successfully reset passwords for ${selectedUserIds.length} users to "Default1234".`);
+      alert(`Successfully reset passwords for ${selectedUserIds.length} users to their default passwords.`);
     } catch (error: any) {
       console.error('Error in bulk reset:', error);
       alert('Failed to perform bulk reset: ' + error.message);
@@ -662,7 +665,7 @@ export const UserManagement: React.FC = () => {
               <AlertDialogTitle>Reset User Password</AlertDialogTitle>
             </div>
             <AlertDialogDescription>
-              This will reset the password for <strong>{userToReset?.email}</strong> to <strong>Default1234</strong>. 
+              This will reset the password for <strong>{userToReset?.email}</strong> to their default password. 
               The user will be required to change their password immediately upon their next login.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -684,7 +687,7 @@ export const UserManagement: React.FC = () => {
               <AlertDialogTitle>Bulk Reset Passwords</AlertDialogTitle>
             </div>
             <AlertDialogDescription>
-              This will reset the passwords for all <strong>{selectedUserIds.length}</strong> selected users to <strong>Default1234</strong>.
+              This will reset the passwords for all <strong>{selectedUserIds.length}</strong> selected users to their default passwords.
               These users will be required to change their password immediately upon their next login.
             </AlertDialogDescription>
           </AlertDialogHeader>

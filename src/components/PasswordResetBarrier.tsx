@@ -33,8 +33,8 @@ export const PasswordResetBarrier: React.FC<PasswordResetBarrierProps> = ({ chil
       return setError('Password must be at least 6 characters long');
     }
 
-    if (newPassword === 'Default1234') {
-      return setError('You cannot use the default password "Default1234". Please choose a different one.');
+    if (newPassword === 'Default@1234' || newPassword === 'Exam@2026') {
+      return setError('You cannot use the default passwords. Please choose a different one.');
     }
 
     if (newPassword !== confirmPassword) {
