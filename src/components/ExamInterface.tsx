@@ -588,7 +588,11 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     <Badge variant="secondary">{currentQuestion.points} Marks</Badge>
                   </div>
                   <CardTitle className="text-2xl mt-4 leading-relaxed">
-                    {currentQuestion.text}
+                    {currentQuestion.type === 'practical' ? (
+                      <div dangerouslySetInnerHTML={{ __html: currentQuestion.text }} />
+                    ) : (
+                      currentQuestion.text
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
@@ -640,6 +644,21 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                       value={answers[currentQuestion.id] || ''}
                       onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
                     />
+                  )}
+
+                  {currentQuestion.type === 'practical' && (
+                    <div className="mt-4">
+                      <DriveFileUploader
+                        providerToken={providerToken}
+                        existingSubmission={answers[currentQuestion.id]}
+                        onUploadSuccess={(fileInfo) => setAnswers({ ...answers, [currentQuestion.id]: fileInfo })}
+                        onRemove={() => {
+                          const newAnswers = { ...answers };
+                          delete newAnswers[currentQuestion.id];
+                          setAnswers(newAnswers);
+                        }}
+                      />
+                    </div>
                   )}
                 </CardContent>
               </Card>
