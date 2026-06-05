@@ -116,6 +116,7 @@ export const LoginPage: React.FC = () => {
     const { error } = await supabase.auth.signInWithOtp({ 
       email: cleanEmail,
       options: {
+        emailRedirectTo: window.location.origin,
         data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
       }
     });
