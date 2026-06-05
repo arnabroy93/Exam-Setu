@@ -109,20 +109,20 @@ export const LoginPage: React.FC = () => {
     }
 
     const { supabase } = await import('../lib/supabase');
-    const redirectTo = window.location.origin.includes('localhost') 
-      ? `${window.location.origin}/` 
-      : `${window.location.origin}/`;
 
     const { error } = await supabase.auth.signInWithOtp({ 
       email: cleanEmail,
-      options: { 
-        emailRedirectTo: redirectTo,
+      options: {
         data: { full_name: cleanEmail.split('@')[0], role: selectedRole }
       }
     });
     
     if (error) {
-      setError(error.message.toLowerCase().includes('rate limit') ? 'Too many attempts! Please wait.' : error.message);
+      if (error.message.toLowerCase().includes('rate limit') || error.message.toLowerCase().includes('magic link')) {
+        setError('Failed to send email. You may have hit the Supabase email limit (max 3/hour on free tier). Please use Password login instead.');
+      } else {
+        setError(error.message);
+      }
     } else {
       setSuccessMsg('Success! Check your email inbox for the magic link.');
     }
