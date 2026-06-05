@@ -82,7 +82,7 @@ export const LoginPage: React.FC = () => {
 
             if (signUpError) {
               if (signUpError.message.toLowerCase().includes('already registered')) {
-                return setError('This account is already registered with a different password. If you forgot your password, please use the Magic Link option or contact your administrator to reset it to the default.');
+                return setError('Invalid login credentials. The password you entered is incorrect. If your password was recently reset, please ensure the admin has correctly configured the database. Otherwise, use Magic Link.');
               }
               throw signUpError;
             }

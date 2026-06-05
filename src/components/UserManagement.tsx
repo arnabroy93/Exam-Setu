@@ -193,7 +193,12 @@ export const UserManagement: React.FC = () => {
         new_password: defaultPwd
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message && error.message.includes("Could not find the function")) {
+          throw new Error("RPC Function 'reset_user_password' not found. You MUST execute the SQL provided in admin_setup.sql in your Supabase SQL Editor to enable this feature.");
+        }
+        throw error;
+      }
 
       if (currentUserProfile) {
         await logUserActivity(currentUserProfile, 'ADMIN_RESET_PASSWORD', `Admin reset password for user: ${userToReset.email}`);
@@ -217,10 +222,17 @@ export const UserManagement: React.FC = () => {
       await Promise.all(selectedUserIds.map(async (id) => {
         const user = users.find(u => u.uid === id || (u as any).id === id);
         const defaultPwd = user?.role === 'student' ? 'Default@1234' : 'Exam@2026';
-        await supabase.rpc('reset_user_password', {
+        const { error } = await supabase.rpc('reset_user_password', {
           target_user_id: String((user as any)?.id || user?.uid || id),
           new_password: defaultPwd
         });
+        
+        if (error) {
+          if (error.message && error.message.includes("Could not find the function")) {
+            throw new Error("RPC Function 'reset_user_password' not found. You MUST execute the SQL provided in admin_setup.sql in your Supabase SQL Editor to enable this feature.");
+          }
+          throw error;
+        }
       }));
 
       if (currentUserProfile) {
