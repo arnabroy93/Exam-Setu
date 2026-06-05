@@ -20,10 +20,12 @@ BEGIN
   WHERE email = target_email;
   
   -- 2. Mark the user as requiring a password reset on their next login
-  -- This sets password_reset_required flag to true inside raw_app_meta_data
+  -- This sets password_reset_required flag to true inside raw_user_meta_data
+  -- We also clean up the old raw_app_meta_data flag if it exists from previous versions
   UPDATE auth.users
-  SET raw_app_meta_data = 
-      COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"password_reset_required": true}'::jsonb,
+  SET raw_user_meta_data = 
+      COALESCE(raw_user_meta_data, '{}'::jsonb) || '{"password_reset_required": true}'::jsonb,
+      raw_app_meta_data = raw_app_meta_data - 'password_reset_required',
       updated_at = now()
   WHERE email = target_email;
 END;

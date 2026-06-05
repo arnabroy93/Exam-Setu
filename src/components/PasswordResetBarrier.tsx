@@ -23,7 +23,7 @@ export const PasswordResetBarrier: React.FC<PasswordResetBarrierProps> = ({ chil
   const isResetRequired = !isArnab && (
     user?.app_metadata?.password_reset_required === true || 
     user?.user_metadata?.password_reset_required === true
-  );
+  ) && user?.user_metadata?.password_reset_required !== false;
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
