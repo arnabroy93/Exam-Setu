@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, X, File, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface DriveFileUploaderProps {
   providerToken: string | null;
@@ -18,51 +19,40 @@ export const DriveFileUploader: React.FC<DriveFileUploaderProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const FOLDER_ID = '1CIeDzrrglXHi3tNqE0zkb8y5kUfwh0Dy';
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!providerToken) {
-      setError('Google Drive access is required. Please re-authenticate.');
-      return;
-    }
 
     setIsUploading(true);
     setError(null);
 
     try {
-      const metadata = {
-        name: file.name,
-        parents: [FOLDER_ID]
-      };
+      // Create a unique file path
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `submissions/${fileName}`;
 
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', file);
+      const { data, error: uploadError } = await supabase.storage
+        .from('exam_files')
+        .upload(filePath, file);
 
-      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${providerToken}`
-        },
-        body: form
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload file to Google Drive.');
+      if (uploadError) {
+        throw uploadError;
       }
 
-      const data = await response.json();
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('exam_files')
+        .getPublicUrl(filePath);
+
       onUploadSuccess({
-        id: data.id,
-        name: data.name,
-        url: data.webViewLink
+        id: data.path,
+        name: file.name,
+        url: publicUrlData.publicUrl
       });
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'An error occurred during upload.');
+      setError(err.message || 'An error occurred during upload. Please ensure your admin has executed the storage_setup.sql file.');
     } finally {
       setIsUploading(false);
     }
@@ -102,11 +92,11 @@ export const DriveFileUploader: React.FC<DriveFileUploaderProps> = ({
               <span className="font-semibold text-primary">Click to upload</span> or drag and drop
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              File will be directly uploaded to Anudip's Google Drive.
+              File will be uploaded securely
             </p>
             {isUploading && (
               <p className="text-sm font-semibold text-primary mt-4 animate-pulse">
-                Uploading to Google Drive...
+                Uploading...
               </p>
             )}
           </div>
@@ -126,13 +116,7 @@ export const DriveFileUploader: React.FC<DriveFileUploaderProps> = ({
           <p>{error}</p>
         </div>
       )}
-      
-      {!providerToken && !error && (
-        <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-600 text-sm flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <p>Note: You need to be signed in with Google Drive access to upload.</p>
-        </div>
-      )}
     </div>
   );
 };
+
