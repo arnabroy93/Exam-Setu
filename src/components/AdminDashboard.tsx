@@ -4,7 +4,7 @@ import { Exam, ExamAttempt, UserProfile } from '../types';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw, ShieldCheck, ClipboardList } from 'lucide-react';
+import { BookOpen, Users, CheckCircle, CheckCircle2, TrendingUp, Clock, FileText, ArrowRight, Search, Mail, Calendar, Activity, Trash2, RefreshCw, ShieldCheck, ClipboardList, Trophy } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -45,6 +45,21 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const [attemptToReset, setAttemptToReset] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [selectedExamId, setSelectedExamId] = useState<string>('all');
+  const [allExams, setAllExams] = useState<Exam[]>([]);
+  const [examStats, setExamStats] = useState<{
+    status: string;
+    duration: number;
+    totalQuestions: number;
+    submittedAttempts: number;
+    activeStudents: number;
+    averageScore: number;
+    highestScore: number;
+    passRate: number;
+    totalStudents: number;
+  } | null>(null);
+  const [examStatsLoading, setExamStatsLoading] = useState(false);
 
   // Attribution Resolver for Admin Dashboard Table
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
@@ -136,9 +151,71 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     }
   };
 
+  const fetchAllExamsList = async () => {
+    try {
+      const { data } = await supabase.from('exams').select('*').order('title', { ascending: true });
+      if (data) {
+        setAllExams(data as Exam[]);
+      }
+    } catch (e) {
+      console.error('Error fetching exams list:', e);
+    }
+  };
+
+  const fetchExamStats = async (examId: string) => {
+    if (examId === 'all') {
+      setExamStats(null);
+      return;
+    }
+    setExamStatsLoading(true);
+    try {
+      const [
+        { data: examData },
+        { count: examAttemptsCount },
+        { data: gradedAttempts },
+        { count: activeExamStudents },
+        { data: allAttemptsForExam }
+      ] = await Promise.all([
+        supabase.from('exams').select('*').eq('id', examId).single(),
+        supabase.from('attempts').select('*', { count: 'exact', head: true }).eq('examId', examId).in('status', ['submitted', 'graded']),
+        supabase.from('attempts').select('score').eq('examId', examId).eq('status', 'graded'),
+        supabase.from('attempts').select('*', { count: 'exact', head: true }).eq('examId', examId).eq('status', 'in-progress'),
+        supabase.from('attempts').select('studentId').eq('examId', examId)
+      ]);
+
+      if (examData) {
+        const scores = (gradedAttempts || [])
+          .map(a => a.score)
+          .filter(s => s !== undefined && s !== null) as number[];
+        
+        const avgScore = scores.length > 0 ? Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length) : 0;
+        const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+        const passedCount = scores.filter(s => s >= 50).length;
+        const passRatePct = scores.length > 0 ? Math.round((passedCount / scores.length) * 100) : 0;
+        const uniqueStudentsCount = Array.from(new Set((allAttemptsForExam || []).map(a => a.studentId))).length;
+
+        setExamStats({
+          status: examData.status || 'draft',
+          duration: examData.duration || 0,
+          totalQuestions: examData.questions?.length || 0,
+          submittedAttempts: examAttemptsCount || 0,
+          activeStudents: activeExamStudents || 0,
+          averageScore: avgScore,
+          highestScore: maxScore,
+          passRate: passRatePct,
+          totalStudents: uniqueStudentsCount
+        });
+      }
+    } catch (e) {
+      console.error('Error fetching exam specific stats:', e);
+    } finally {
+      setExamStatsLoading(false);
+    }
+  };
+
   const fetchDetailData = async (statId: string) => {
     // Check session cache for detail data
-    const cacheKey = `admin_detail_${statId}`;
+    const cacheKey = `admin_detail_${statId}_${selectedExamId}`;
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
       const { data, students: cachedStudents, exams: cachedExams, timestamp } = JSON.parse(cached);
@@ -166,7 +243,14 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           setExams(detailExams);
           break;
         case 'total-attempts':
-          const { data: attemptsData } = await supabase.from('attempts').select('*').in('status', ['submitted', 'graded']).order('startTime', { ascending: false }).limit(50);
+        case 'average-score':
+        case 'highest-score':
+        case 'pass-rate':
+          let attemptsQuery = supabase.from('attempts').select('*').in('status', ['submitted', 'graded']).order('startTime', { ascending: false });
+          if (selectedExamId !== 'all') {
+            attemptsQuery = attemptsQuery.eq('examId', selectedExamId);
+          }
+          const { data: attemptsData } = await attemptsQuery.limit(50);
           detailAttempts = attemptsData as any as ExamAttempt[] || [];
           setAttempts(detailAttempts);
           
@@ -203,7 +287,11 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
             detailStudents = tUData as any as UserProfile[] || [];
             setStudents(detailStudents);
           } else {
-            const { data: aAtData } = await supabase.from('attempts').select('*').eq('status', 'in-progress').limit(50);
+            let activeQuery = supabase.from('attempts').select('*').eq('status', 'in-progress');
+            if (selectedExamId !== 'all') {
+              activeQuery = activeQuery.eq('examId', selectedExamId);
+            }
+            const { data: aAtData } = await activeQuery.limit(50);
             const activeStudentIds = Array.from(new Set((aAtData || []).map(d => d.studentId)));
             
             if (activeStudentIds.length > 0) {
@@ -235,7 +323,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
 
   const fetchRecentActivity = async (force = false) => {
     // Persistent cache check
-    const localCacheKey = 'admin_recent_activity_persistent';
+    const localCacheKey = `admin_recent_activity_persistent_${selectedExamId}`;
     if (!force) {
       const cached = localStorage.getItem(localCacheKey);
       if (cached) {
@@ -250,7 +338,11 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
     }
 
     try {
-      const { data: recentRes } = await supabase.from('attempts').select('*').order('startTime', { ascending: false }).limit(5);
+      let query = supabase.from('attempts').select('*').order('startTime', { ascending: false });
+      if (selectedExamId !== 'all') {
+        query = query.eq('examId', selectedExamId);
+      }
+      const { data: recentRes } = await query.limit(5);
       const recentData = (recentRes || []) as any as ExamAttempt[];
       
       const enriched = await Promise.all(recentData.map(async (attempt) => {
@@ -273,12 +365,25 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   const handleRefresh = () => {
     fetchStats(true);
     fetchRecentActivity(true);
+    fetchAllExamsList();
+    if (selectedExamId !== 'all') {
+      fetchExamStats(selectedExamId);
+    }
   };
 
   useEffect(() => {
     fetchStats();
-    fetchRecentActivity();
+    fetchAllExamsList();
   }, []);
+
+  useEffect(() => {
+    fetchRecentActivity(true);
+    if (selectedExamId !== 'all') {
+      fetchExamStats(selectedExamId);
+    } else {
+      setExamStats(null);
+    }
+  }, [selectedExamId]);
 
   useEffect(() => {
     if (selectedStat) {
@@ -303,15 +408,79 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
   };
 
   const statCards = [
-    { id: 'total-exams', title: 'Total Exams', value: stats.totalExams, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'All time creations' },
-    { id: 'active-exams', title: 'Active Exams', value: stats.activeExams, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Currently published' },
-    { id: 'inactive-exams', title: 'Inactive Exams', value: stats.inactiveExams, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-500/10', desc: 'Drafts or Archived' },
-    { id: 'total-attempts', title: 'Exam Attempts', value: stats.submittedAttempts, icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-500/10', desc: 'Completed submissions' },
-    { id: 'active-students', title: 'Live Students', value: stats.activeStudents, icon: Activity, color: 'text-indigo-500', bg: 'bg-indigo-500/10', desc: 'Currently taking exams' },
-    { id: 'total-students', title: 'Students', value: stats.totalStudents, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Registered students' },
+    { 
+      id: 'total-exams', 
+      title: 'Total Exams', 
+      value: selectedExamId === 'all' ? stats.totalExams : 1, 
+      icon: BookOpen, 
+      color: 'text-blue-500', 
+      bg: 'bg-blue-500/10', 
+      desc: selectedExamId === 'all' ? 'All time creations' : 'Selected examination' 
+    },
+    { 
+      id: 'active-exams', 
+      title: 'Active Exams', 
+      value: selectedExamId === 'all' ? stats.activeExams : (examStats?.status === 'published' ? 1 : 0), 
+      icon: CheckCircle2, 
+      color: 'text-green-500', 
+      bg: 'bg-green-500/10', 
+      desc: selectedExamId === 'all' ? 'Currently published' : `Status: ${(examStats?.status || 'draft').toUpperCase()}` 
+    },
+    { 
+      id: 'inactive-exams', 
+      title: 'Inactive Exams', 
+      value: selectedExamId === 'all' ? stats.inactiveExams : (examStats?.status !== 'published' ? 1 : 0), 
+      icon: FileText, 
+      color: 'text-slate-500', 
+      bg: 'bg-slate-500/10', 
+      desc: selectedExamId === 'all' ? 'Drafts or Archived' : `Status: ${(examStats?.status || 'draft').toUpperCase()}` 
+    },
+    { 
+      id: 'total-attempts', 
+      title: 'Exam Attempts', 
+      value: selectedExamId === 'all' ? stats.submittedAttempts : (examStats?.submittedAttempts || 0), 
+      icon: TrendingUp, 
+      color: 'text-orange-500', 
+      bg: 'bg-orange-500/10', 
+      desc: selectedExamId === 'all' ? 'Completed submissions' : 'Submissions for selected exam' 
+    },
+    { 
+      id: 'active-students', 
+      title: 'Live Students', 
+      value: selectedExamId === 'all' ? stats.activeStudents : (examStats?.activeStudents || 0), 
+      icon: Activity, 
+      color: 'text-indigo-500', 
+      bg: 'bg-indigo-500/10', 
+      desc: selectedExamId === 'all' ? 'Currently taking exams' : 'Currently taking this exam' 
+    },
+    { 
+      id: 'total-students', 
+      title: 'Students', 
+      value: selectedExamId === 'all' ? stats.totalStudents : (examStats?.totalStudents || 0), 
+      icon: Users, 
+      color: 'text-purple-500', 
+      bg: 'bg-purple-500/10', 
+      desc: selectedExamId === 'all' ? 'Registered students' : 'Students who attempted this' 
+    },
     ...(profile?.role === 'admin' ? [
-      { id: 'total-examiners', title: 'Total Examiners', value: stats.totalExaminers, icon: ShieldCheck, color: 'text-pink-500', bg: 'bg-pink-500/10', desc: 'Management accounts' },
-      { id: 'total-users', title: 'Total Platform Users', value: stats.totalUsers, icon: ClipboardList, color: 'text-cyan-500', bg: 'bg-cyan-500/10', desc: 'All registered roles' },
+      { 
+        id: 'total-examiners', 
+        title: 'Total Examiners', 
+        value: stats.totalExaminers, 
+        icon: ShieldCheck, 
+        color: 'text-pink-500', 
+        bg: 'bg-pink-500/10', 
+        desc: 'Management accounts' 
+      },
+      { 
+        id: 'total-users', 
+        title: 'Total Platform Users', 
+        value: stats.totalUsers, 
+        icon: ClipboardList, 
+        color: 'text-cyan-500', 
+        bg: 'bg-cyan-500/10', 
+        desc: 'All registered roles' 
+      },
     ] : [])
   ];
 
@@ -352,8 +521,11 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
           )
         };
       case 'total-attempts':
+      case 'average-score':
+      case 'highest-score':
+      case 'pass-rate':
         return {
-          title: 'Submitted Exam Attempts',
+          title: selectedStat === 'total-attempts' ? 'Submitted Exam Attempts' : (selectedStat === 'average-score' ? 'Graded Attempts (Average Score)' : (selectedStat === 'highest-score' ? 'Graded Attempts (Highest Score)' : 'Graded Attempts (Pass Rate)')),
           description: 'Complete history of all submitted and graded exams.',
           data: attempts.filter(a => a.status === 'submitted' || a.status === 'graded').filter(a => {
             const student = students.find(s => s.uid === a.studentId);
@@ -524,27 +696,60 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
         </Button>
       </div>
 
+      {/* Exam Selector / Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center p-4 bg-muted/40 rounded-xl border border-border">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Filter Dashboard Data
+          </label>
+          <p className="text-sm text-foreground font-medium">
+            Select an exam to view detailed metrics and performance analysis
+          </p>
+        </div>
+        <div className="w-full sm:w-72">
+          <select
+            value={selectedExamId}
+            onChange={(e) => setSelectedExamId(e.target.value)}
+            className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium"
+          >
+            <option value="all">📊 All Examinations (Overview)</option>
+            {allExams.map((exam) => (
+              <option key={exam.id} value={exam.id}>
+                📝 {exam.title} ({exam.status})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat, i) => (
-          <Card key={i} className="cursor-pointer hover:shadow-md transition-all border-transparent hover:border-primary/20" onClick={() => setSelectedStat(stat.id)}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-2 rounded-lg ${stat.bg}`}>
-                  <stat.icon className={`w-5 h-5 ${stat.color}`} />
+        {statCards.map((stat, i) => {
+          const isClickable = true;
+          return (
+            <Card 
+              key={i} 
+              className={`transition-all border-transparent ${isClickable ? 'cursor-pointer hover:shadow-md hover:border-primary/20' : 'cursor-default'}`} 
+              onClick={() => isClickable && setSelectedStat(stat.id)}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`p-2 rounded-lg ${stat.bg}`}>
+                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                  </div>
+                  {isClickable && <ArrowRight className="w-4 h-4 text-muted-foreground opacity-50" />}
                 </div>
-                <ArrowRight className="w-4 h-4 text-muted-foreground opacity-50" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{stat.title}</p>
-                <p className="text-3xl font-bold mt-1">{stat.value}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-muted-foreground">{stat.desc}</p>
-                  <span className="text-[10px] font-medium text-primary hover:underline">View Details</span>
+                <div>
+                  <p className="text-sm text-muted-foreground">{stat.title}</p>
+                  <p className="text-3xl font-bold mt-1">{stat.value}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-muted-foreground">{stat.desc}</p>
+                    {isClickable && <span className="text-[10px] font-medium text-primary hover:underline">View Details</span>}
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Dialog open={!!selectedStat} onOpenChange={(open) => !open && setSelectedStat(null)}>
