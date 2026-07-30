@@ -69,9 +69,36 @@ export const LiveMonitoring: React.FC = () => {
     if (isPaused) return;
 
     const channel = supabase.channel('active_attempts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts', filter: `status=eq.in-progress` }, async () => {
-          const { data } = await supabase.from('attempts').select('*').eq('status', 'in-progress');
-          if (data) setActiveAttempts(data as any as ExamAttempt[]);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts' }, (payload) => {
+        const { eventType, new: newRow, old: oldRow } = payload;
+        
+        setActiveAttempts((prev) => {
+          let updatedList = [...prev];
+          
+          if (eventType === 'INSERT') {
+            if (newRow && newRow.status === 'in-progress') {
+              if (!updatedList.some(item => item.id === newRow.id)) {
+                updatedList.push(newRow as any);
+              }
+            }
+          } else if (eventType === 'UPDATE') {
+            if (newRow && newRow.status === 'in-progress') {
+              const idx = updatedList.findIndex(item => item.id === newRow.id);
+              if (idx !== -1) {
+                updatedList[idx] = { ...updatedList[idx], ...newRow };
+              } else {
+                updatedList.push(newRow as any);
+              }
+            } else {
+              // Status changed to submitted/graded, remove it from active list
+              updatedList = updatedList.filter(item => item.id !== (newRow?.id || oldRow?.id));
+            }
+          } else if (eventType === 'DELETE') {
+            updatedList = updatedList.filter(item => item.id !== oldRow?.id);
+          }
+          
+          return updatedList;
+        });
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {

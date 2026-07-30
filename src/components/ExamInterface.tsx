@@ -30,7 +30,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [endTime, setEndTime] = useState<number | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
-  const [attemptId] = useState(Math.random().toString(36).substr(2, 9));
+  const [attemptId, setAttemptId] = useState(() => Math.random().toString(36).substr(2, 9));
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -41,34 +41,130 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [passwordError, setPasswordError] = useState(false);
   const [shuffledQuestions, setShuffledQuestions] = useState(exam.questions);
   const [hasAttempted, setHasAttempted] = useState(false);
-  const [checkingAttempt, setCheckingAttempt] = useState(exam.settings?.restrictAttempts);
+  const [checkingAttempt, setCheckingAttempt] = useState(true); // Always check on load to allow resume
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [lastLog, setLastLog] = useState<ActivityLog | null>(null);
   const lastSyncRef = React.useRef<{ answers: Record<string, any>, logsCount: number }>({ answers: {}, logsCount: 0 });
 
+  const answersRef = React.useRef(answers);
+  const logsRef = React.useRef(logs);
+
+  // Keep refs in sync with state for keystroke-independent background intervals
   useEffect(() => {
-    if (!exam.settings?.restrictAttempts || !profile) {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  // Save backup to localStorage on any state change as a zero-latency local fallback
+  useEffect(() => {
+    if (!profile || !hasStarted || isSubmitted) return;
+    const backupData = {
+      attemptId,
+      answers,
+      logs,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(`acadex_backup_attempt_${exam.id}_${profile.uid}`, JSON.stringify(backupData));
+  }, [attemptId, answers, logs, exam.id, profile, hasStarted, isSubmitted]);
+
+  useEffect(() => {
+    if (!profile) {
       setCheckingAttempt(false);
       return;
     }
 
     const checkAttempt = async () => {
-      const { data } = await supabase
-        .from('attempts')
-        .select('id')
-        .eq('examId', exam.id)
-        .eq('studentId', profile.uid)
-        .limit(1);
+      try {
+        // Try restoring from localStorage backup first as a local zero-latency fallback
+        const localBackupKey = `acadex_backup_attempt_${exam.id}_${profile.uid}`;
+        const localBackupRaw = localStorage.getItem(localBackupKey);
+        let localBackup: any = null;
+        if (localBackupRaw) {
+          try {
+            localBackup = JSON.parse(localBackupRaw);
+          } catch (e) {}
+        }
 
-      if (data && data.length > 0) {
-        setHasAttempted(true);
+        const { data, error } = await supabase
+          .from('attempts')
+          .select('id, status, answers, startTime, suspiciousActivity')
+          .eq('examId', exam.id)
+          .eq('studentId', profile.uid)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Error querying existing attempt:", error);
+        }
+
+        if (data) {
+          if (data.status === 'submitted' || data.status === 'graded') {
+            if (exam.settings?.restrictAttempts) {
+              setHasAttempted(true);
+            }
+          } else if (data.status === 'in-progress') {
+            // Found active in-progress attempt! Let's resume it
+            setAttemptId(data.id);
+            
+            // Prefer the fresher source between DB and localStorage
+            const resolvedAnswers = localBackup && localBackup.attemptId === data.id
+              ? { ...data.answers, ...localBackup.answers }
+              : data.answers || {};
+              
+            const resolvedLogs = localBackup && localBackup.attemptId === data.id && localBackup.logs?.length > (data.suspiciousActivity?.length || 0)
+              ? localBackup.logs
+              : data.suspiciousActivity || [];
+
+            setAnswers(resolvedAnswers);
+            setLogs(resolvedLogs);
+            lastSyncRef.current = {
+              answers: resolvedAnswers,
+              logsCount: resolvedLogs.length
+            };
+
+            // Calculate exact elapsed and remaining time based on original DB startTime
+            const elapsedMs = Date.now() - new Date(data.startTime).getTime();
+            const durationMs = exam.duration * 60 * 1000;
+            const remainingSecs = Math.max(0, Math.floor((durationMs - elapsedMs) / 1000));
+
+            if (remainingSecs <= 0) {
+              // Time ran out during disconnect/reload, mark as attempted
+              setHasAttempted(true);
+            } else {
+              setTimeLeft(remainingSecs);
+              setEndTime(Date.now() + remainingSecs * 1000);
+              setHasStarted(true);
+              setIsFullScreen(true);
+              
+              // Automatically re-request camera if anti-cheating mode is active
+              if (exam.settings?.enableAntiCheating) {
+                try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                  setMediaStream(stream);
+                } catch (err) {
+                  console.error("Failed to restore media stream on resume:", err);
+                }
+              }
+            }
+          }
+        } else if (localBackup && Date.now() - localBackup.timestamp < 4 * 3600 * 1000) {
+          // If no DB record was written yet but localBackup exists from last 4 hours, restore it as well
+          setAttemptId(localBackup.attemptId);
+          setAnswers(localBackup.answers || {});
+          setLogs(localBackup.logs || []);
+        }
+      } catch (err) {
+        console.error("Error checking/recovering student attempt:", err);
+      } finally {
+        setCheckingAttempt(false);
       }
-      setCheckingAttempt(false);
     };
     checkAttempt();
-  }, [exam.id, exam.settings?.restrictAttempts, profile]);
+  }, [exam.id, exam.duration, exam.settings?.restrictAttempts, exam.settings?.enableAntiCheating, profile]);
 
   useEffect(() => {
     if (exam.settings?.shuffleQuestions) {
@@ -96,23 +192,24 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     console.warn(`Suspicious activity: ${type} - ${details}`);
   }, []);
 
-  // Sync attempt to Firestore for live monitoring
+  // Sync attempt to database at a predictable, optimized interval using non-reactive state refs
   useEffect(() => {
     if (!hasStarted || isSubmitted || isSubmitting || !profile) return;
 
     const syncAttempt = async () => {
-      if (!profile) return;
+      const currentAnswers = answersRef.current;
+      const currentLogs = logsRef.current;
 
       const sanitizedAnswers: Record<string, any> = {};
-      Object.keys(answers).forEach(key => {
-        if (answers[key] !== undefined && answers[key] !== null) {
-          sanitizedAnswers[key] = answers[key];
+      Object.keys(currentAnswers).forEach(key => {
+        if (currentAnswers[key] !== undefined && currentAnswers[key] !== null) {
+          sanitizedAnswers[key] = currentAnswers[key];
         }
       });
 
       // Check if anything actually changed since last sync
       const hasAnswersChanged = JSON.stringify(sanitizedAnswers) !== JSON.stringify(lastSyncRef.current.answers);
-      const hasLogsChanged = logs.length !== lastSyncRef.current.logsCount;
+      const hasLogsChanged = currentLogs.length !== lastSyncRef.current.logsCount;
 
       if (!hasAnswersChanged && !hasLogsChanged && lastSyncRef.current.logsCount > 0) {
         return; // Skip sync if nothing changed
@@ -125,11 +222,10 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         status: 'in-progress',
-        suspiciousActivity: logs,
+        suspiciousActivity: currentLogs,
       };
 
       try {
-        // Remove any undefined values that might crash
         const cleanAttempt = JSON.parse(JSON.stringify(attempt));
         const { error: syncError } = await supabase.from('attempts').upsert(cleanAttempt, { onConflict: 'id' });
         
@@ -139,17 +235,19 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
           // Update sync ref
           lastSyncRef.current = {
             answers: sanitizedAnswers,
-            logsCount: logs.length
+            logsCount: currentLogs.length
           };
+          console.log('Background sync successful');
         }
       } catch (error) {
         console.error('Error syncing attempt:', error);
       }
     };
 
-    const timeoutId = setTimeout(syncAttempt, 30000); // Sync every 30 seconds instead of 2
-    return () => clearTimeout(timeoutId);
-  }, [hasStarted, isSubmitted, profile, attemptId, exam.id, exam.duration, answers, logs, endTime]);
+    // Predictable background interval (syncs every 20 seconds)
+    const intervalId = setInterval(syncAttempt, 20000);
+    return () => clearInterval(intervalId);
+  }, [hasStarted, isSubmitted, isSubmitting, profile, attemptId, exam.id, exam.duration, endTime]);
 
   const submitExam = useCallback(async () => {
     if (isSubmitting || isSubmitted) return;
