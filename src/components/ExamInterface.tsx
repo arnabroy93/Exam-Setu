@@ -456,13 +456,13 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   if (checkingAttempt) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-8 text-center space-y-6">
-            <p>Checking exam status...</p>
+          <Card className="max-w-md w-full p-8 text-center space-y-6 bg-white/70 backdrop-blur-md border border-teal-100/40">
+            <p className="text-teal-950 font-medium">Checking exam status...</p>
           </Card>
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
           An Initiative by Academic Excellence Team - Anudip Foundation
         </footer>
       </div>
@@ -471,20 +471,20 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   if (hasAttempted) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-8 text-center space-y-6">
+          <Card className="max-w-md w-full p-8 text-center space-y-6 bg-white/70 backdrop-blur-md border border-teal-100/40">
             <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
               <AlertTriangle className="w-8 h-8 text-destructive" />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl">Attempt Restricted</CardTitle>
-              <p className="text-muted-foreground">You have already attempted this exam. You cannot take it again.</p>
+              <CardTitle className="text-2xl font-bold text-teal-950">Attempt Restricted</CardTitle>
+              <p className="text-teal-800/85 text-sm">You have already attempted this exam. You cannot take it again.</p>
             </div>
-            <Button onClick={onFinish} className="w-full">Return to Dashboard</Button>
+            <Button onClick={onFinish} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-lg shadow-teal-600/10">Return to Dashboard</Button>
           </Card>
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
           An Initiative by Academic Excellence Team - Anudip Foundation
         </footer>
       </div>
@@ -493,20 +493,20 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-8 text-center space-y-6">
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="w-8 h-8 text-green-600" />
+          <Card className="max-w-md w-full p-8 text-center space-y-6 bg-white/70 backdrop-blur-md border border-teal-100/40">
+            <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl">Thanks for submission</CardTitle>
-              <p className="text-muted-foreground">Your exam has been submitted successfully. Your score will be published soon.</p>
+              <CardTitle className="text-2xl font-bold text-teal-950">Thanks for submission</CardTitle>
+              <p className="text-teal-800/85 text-sm">Your exam has been submitted successfully. Your score will be published soon.</p>
             </div>
-            <Button onClick={onFinish} className="w-full">Return to Dashboard</Button>
+            <Button onClick={onFinish} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-lg shadow-teal-600/10">Return to Dashboard</Button>
           </Card>
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
           An Initiative by Academic Excellence Team - Anudip Foundation
         </footer>
       </div>
@@ -515,15 +515,15 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   if (!isPasswordVerified) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-8 space-y-6">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-              <Lock className="w-8 h-8 text-primary" />
+          <Card className="max-w-md w-full p-8 space-y-6 bg-white/70 backdrop-blur-md border border-teal-100/40">
+            <div className="mx-auto w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center">
+              <Lock className="w-8 h-8 text-teal-600" />
             </div>
             <div className="text-center space-y-2">
-              <CardTitle className="text-2xl">Password Required</CardTitle>
-              <p className="text-muted-foreground">This exam is password protected. Please enter the password to continue.</p>
+              <CardTitle className="text-2xl font-bold text-teal-950">Password Required</CardTitle>
+              <p className="text-teal-800/85 text-sm">This exam is password protected. Please enter the password to continue.</p>
             </div>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -533,24 +533,24 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     placeholder="Enter password" 
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
-                    className={`pr-10 ${passwordError ? 'border-destructive' : ''}`}
+                    className={`pr-10 border-teal-200 focus:ring-teal-500 focus:border-teal-500 ${passwordError ? 'border-destructive' : ''}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-teal-500 hover:text-teal-700"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {passwordError && <p className="text-xs text-destructive">Incorrect password. Please try again.</p>}
               </div>
-              <Button onClick={verifyPassword} className="w-full">Verify & Continue</Button>
-              <Button variant="ghost" onClick={onFinish} className="w-full">Cancel</Button>
+              <Button onClick={verifyPassword} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-lg shadow-teal-600/10">Verify & Continue</Button>
+              <Button variant="ghost" onClick={onFinish} className="w-full rounded-xl hover:bg-teal-50">Cancel</Button>
             </div>
           </Card>
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
           An Initiative by Academic Excellence Team - Anudip Foundation
         </footer>
       </div>
@@ -559,39 +559,39 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
   if (!hasStarted) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
         <div className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-2xl w-full p-6 md:p-8 space-y-6 md:space-y-8 max-h-[90vh] overflow-y-auto">
+          <Card className="max-w-2xl w-full p-6 md:p-8 space-y-6 md:space-y-8 max-h-[90vh] overflow-y-auto bg-white/70 backdrop-blur-md border border-teal-100/40">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-6 h-6 text-primary" />
+              <div className="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6 text-teal-600" />
               </div>
               <div>
-                <CardTitle className="text-xl md:text-2xl">{exam.title}</CardTitle>
-                <p className="text-sm text-muted-foreground">Ready to begin your examination?</p>
+                <CardTitle className="text-xl md:text-2xl text-teal-950 font-extrabold">{exam.title}</CardTitle>
+                <p className="text-sm text-teal-800/80">Ready to begin your examination?</p>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h4 className="font-bold flex items-center gap-2 text-sm md:text-base">
-                <Eye className="w-4 h-4 text-primary" />
+              <h4 className="font-bold flex items-center gap-2 text-sm md:text-base text-teal-950">
+                <Eye className="w-4 h-4 text-teal-600" />
                 Exam Instructions
               </h4>
-              <div className="p-4 md:p-6 bg-muted/50 rounded-xl border border-border prose prose-sm max-w-none max-h-48 overflow-y-auto">
-                <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
+              <div className="p-4 md:p-6 bg-teal-50/50 rounded-xl border border-teal-100/30 prose prose-sm max-w-none max-h-48 overflow-y-auto">
+                <p className="whitespace-pre-wrap leading-relaxed text-teal-800/80">
                   {exam.instructions || 'Please read all questions carefully. Your progress will be saved automatically.'}
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Card className="p-4 bg-primary/5 border-primary/10">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Duration</p>
-                <p className="text-lg font-bold">{exam.duration} Minutes</p>
+              <Card className="p-4 bg-teal-50/50 border-teal-100/30">
+                <p className="text-xs text-teal-600 uppercase tracking-wider mb-1 font-bold">Duration</p>
+                <p className="text-lg font-black text-teal-950">{exam.duration} Minutes</p>
               </Card>
-              <Card className="p-4 bg-primary/5 border-primary/10">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Questions</p>
-                <p className="text-lg font-bold">{exam.questions.length} Total</p>
+              <Card className="p-4 bg-teal-50/50 border-teal-100/30">
+                <p className="text-xs text-teal-600 uppercase tracking-wider mb-1 font-bold">Questions</p>
+                <p className="text-lg font-black text-teal-950">{exam.questions.length} Total</p>
               </Card>
             </div>
 
@@ -605,14 +605,14 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
             )}
 
             <div className="flex gap-4">
-              <Button variant="ghost" onClick={onFinish} className="flex-1 h-12">Cancel</Button>
-              <Button onClick={enterFullScreen} className="flex-1 h-12 text-lg font-bold">
+              <Button variant="ghost" onClick={onFinish} className="flex-1 h-12 rounded-xl hover:bg-teal-50">Cancel</Button>
+              <Button onClick={enterFullScreen} className="flex-1 h-12 text-lg font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-lg shadow-teal-600/10 transition-all duration-200">
                 {exam.settings?.enableAntiCheating ? 'Enter Full-Screen & Start' : 'Start Examination'}
               </Button>
             </div>
           </Card>
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
           An Initiative by Academic Excellence Team - Anudip Foundation
         </footer>
       </div>
@@ -620,9 +620,9 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col select-none">
+    <div className="min-h-screen bg-transparent flex flex-col select-none relative z-10">
       {/* Header */}
-      <header className="h-16 border-b border-border bg-card flex items-center justify-between px-8 sticky top-0 z-20">
+      <header className="h-16 border-b border-teal-100/40 bg-white/40 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-20">
         <div className="flex items-center gap-4">
           <h1 className="font-bold text-lg">{exam.title}</h1>
           <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
@@ -1025,7 +1025,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         </div>
       )}
 
-      <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-background mt-auto">
+      <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/30 bg-white/30 backdrop-blur-sm mt-auto">
         An Initiative by Academic Excellence Team - Anudip Foundation
       </footer>
     </div>

@@ -9,6 +9,7 @@ import { ResultsView } from './ResultsView';
 import { Exam } from '../types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PortalBackground } from './PortalBackground';
 
 import { ExamManagement } from './ExamManagement';
 
@@ -38,21 +39,34 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   if (view === 'create-exam') {
-    return <ExamCreator onBack={() => setView('manage-exams')} initialExam={selectedExam || undefined} />;
+    return (
+      <PortalBackground>
+        <ExamCreator onBack={() => setView('manage-exams')} initialExam={selectedExam || undefined} />
+      </PortalBackground>
+    );
   }
 
   if (view === 'taking-exam' && selectedExam) {
-    return <ExamInterface exam={selectedExam} onFinish={() => setView('dashboard')} />;
+    return (
+      <PortalBackground>
+        <ExamInterface exam={selectedExam} onFinish={() => setView('dashboard')} />
+      </PortalBackground>
+    );
   }
 
   if (view === 'exam-details' && selectedExam) {
-    return <ExamDetailsView exam={selectedExam} onBack={() => setView('manage-exams')} />;
+    return (
+      <PortalBackground>
+        <ExamDetailsView exam={selectedExam} onBack={() => setView('manage-exams')} />
+      </PortalBackground>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-border bg-card hidden md:flex flex-col">
+    <PortalBackground>
+      <div className="min-h-screen flex flex-1">
+        {/* Sidebar */}
+        <aside className="w-64 border-r border-teal-100/40 bg-white/40 backdrop-blur-md hidden md:flex flex-col">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <motion.div 
@@ -135,9 +149,9 @@ export const Dashboard: React.FC = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-8">
-          <h2 className="text-xl font-semibold">
+      <main className="flex-1 flex flex-col relative z-10 overflow-y-auto">
+        <header className="h-16 border-b border-teal-100/40 bg-white/40 backdrop-blur-md flex items-center justify-between px-8 shrink-0">
+          <h2 className="text-xl font-black bg-gradient-to-r from-teal-950 to-teal-700 bg-clip-text text-transparent">
             {profile?.role === 'admin' && 'Admin Dashboard'}
             {profile?.role === 'examiner' && 'Examiner Dashboard'}
             {profile?.role === 'student' && 'Student Dashboard'}
@@ -150,22 +164,22 @@ export const Dashboard: React.FC = () => {
               </Badge>
             )}
             {(profile?.role === 'admin' || profile?.role === 'examiner') && (
-              <Button onClick={() => { setSelectedExam(null); setView('create-exam'); }} size="sm">
+              <Button onClick={() => { setSelectedExam(null); setView('create-exam'); }} size="sm" className="bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-md shadow-teal-600/10 transition-all duration-200">
                 <Plus className="mr-2 w-4 h-4" />
                 New Exam
               </Button>
             )}
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium">{profile?.email}</p>
-              <p className="text-xs text-muted-foreground capitalize">{profile?.role}</p>
+              <p className="text-sm font-semibold text-teal-950">{profile?.email}</p>
+              <p className="text-xs text-teal-600/80 font-bold uppercase tracking-wider capitalize">{profile?.role}</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
-              {profile?.displayName?.[0]}
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-400 text-white flex items-center justify-center font-black shadow-md shadow-teal-500/15">
+              {profile?.displayName?.[0] || profile?.email?.[0]?.toUpperCase() || 'A'}
             </div>
           </div>
         </header>
         
-        <div className="p-8">
+        <div className="p-8 flex-1">
           {view === 'settings' && <SettingsView />}
           {view === 'results' && <ResultsView />}
           {view === 'user-management' && <UserManagement />}
@@ -191,11 +205,12 @@ export const Dashboard: React.FC = () => {
             </>
           )}
         </div>
-        <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border bg-card mt-auto">
+        <footer className="py-4 text-center text-xs text-teal-800/60 border-t border-teal-100/40 bg-white/40 backdrop-blur-sm mt-auto shrink-0">
           An Initiative By Academic Excellence Team - Anudip Foundation
         </footer>
       </main>
     </div>
+    </PortalBackground>
   );
 };
 
