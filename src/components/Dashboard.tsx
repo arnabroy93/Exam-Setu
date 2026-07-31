@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { LogOut, LayoutDashboard, BookOpen, FileText, Settings, Users, Plus, Play, Activity, Layers, ClipboardList, AlertTriangle } from 'lucide-react';
+import { motion } from 'motion/react';
 import { ExamCreator } from './ExamCreator';
 import { ExamInterface } from './ExamInterface';
 import { ResultsView } from './ResultsView';
@@ -53,10 +54,52 @@ export const Dashboard: React.FC = () => {
       {/* Sidebar */}
       <aside className="w-64 border-r border-border bg-card hidden md:flex flex-col">
         <div className="p-6 border-b border-border">
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Layers className="w-6 h-6" />
-            AcadEx
-          </h1>
+          <div className="flex items-center gap-3">
+            <motion.div 
+              animate={{
+                y: [0, -2, 0],
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              whileHover={{ scale: 1.1 }}
+              className="w-10 h-10 bg-gradient-to-tr from-teal-600 to-teal-400 rounded-xl flex items-center justify-center shadow-md shadow-teal-600/15 relative overflow-hidden"
+            >
+              {/* Subtle shining light beam inside sidebar icon */}
+              <motion.div 
+                animate={{
+                  x: ['-100%', '200%']
+                }}
+                transition={{
+                  duration: 2.2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  repeatDelay: 2
+                }}
+                className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/35 to-transparent -skew-x-12"
+              />
+              <Layers className="w-5 h-5 text-white" />
+            </motion.div>
+            <motion.h1 
+              className="text-2xl font-black bg-gradient-to-r from-teal-800 via-teal-600 to-teal-900 bg-[size:200%_auto] bg-clip-text text-transparent select-none"
+            >
+              <motion.span
+                animate={{
+                  backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+                }}
+                transition={{
+                  duration: 10,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+                className="bg-gradient-to-r from-teal-800 via-teal-500 to-teal-700 bg-[size:200%_auto] bg-clip-text text-transparent inline-block"
+              >
+                AcadEx
+              </motion.span>
+            </motion.h1>
+          </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">
           <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />

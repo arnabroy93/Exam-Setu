@@ -254,13 +254,74 @@ export const LoginPage: React.FC = () => {
         <Card className="border border-teal-100/80 shadow-2xl bg-white/85 backdrop-blur-md rounded-3xl text-teal-950">
           <CardHeader className="text-center space-y-3 pt-8 px-6">
             <motion.div 
-              whileHover={{ scale: 1.05, rotate: 2 }}
-              className="mx-auto w-16 h-16 bg-gradient-to-tr from-teal-600 to-teal-400 rounded-2xl flex items-center justify-center mb-2 shadow-lg shadow-teal-600/20"
+              animate={{
+                y: [0, -4, 0],
+              }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              whileHover={{ scale: 1.05 }}
+              className="mx-auto w-16 h-16 bg-gradient-to-tr from-teal-600 to-teal-400 rounded-2xl flex items-center justify-center mb-2 shadow-lg shadow-teal-600/20 relative overflow-hidden"
             >
-              <Layers className="w-8 h-8 text-white" />
+              {/* Pulsing ring background */}
+              <motion.div 
+                animate={{
+                  scale: [1, 1.4, 1],
+                  opacity: [0.1, 0.3, 0.1]
+                }}
+                transition={{
+                  duration: 2.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="absolute inset-0 bg-teal-300 rounded-2xl"
+              />
+              
+              {/* Ambient light glow swipe */}
+              <motion.div 
+                animate={{
+                  x: ['-100%', '200%']
+                }}
+                transition={{
+                  duration: 2.8,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  repeatDelay: 1.5
+                }}
+                className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/40 to-transparent -skew-x-12"
+              />
+
+              <motion.div
+                animate={{
+                  scale: [1, 1.1, 1],
+                  rotate: [0, 5, -5, 0],
+                }}
+                transition={{
+                  duration: 5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="relative z-10"
+              >
+                <Layers className="w-8 h-8 text-white filter drop-shadow-md" />
+              </motion.div>
             </motion.div>
-            <CardTitle className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-teal-900 to-teal-700 bg-clip-text text-transparent">
-              AcadEx
+            <CardTitle className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-teal-900 via-teal-600 to-teal-700 bg-[size:200%_auto] bg-clip-text text-transparent select-none">
+              <motion.span
+                animate={{
+                  backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+                }}
+                transition={{
+                  duration: 8,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+                className="bg-gradient-to-r from-teal-900 via-teal-500 to-teal-800 bg-[size:200%_auto] bg-clip-text text-transparent inline-block"
+              >
+                AcadEx
+              </motion.span>
             </CardTitle>
             <CardDescription className="text-teal-900/80 text-xs mt-2 leading-relaxed max-w-sm mx-auto">
               AcadEx is a dedicated assessment platform designed to evaluate and enhance knowledge through structured examinations. It serves as an internal platform of Anudip Foundation, aimed at ensuring effective learning outcomes and continuous skill development.
