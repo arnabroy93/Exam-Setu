@@ -3,12 +3,13 @@ import { useAuth } from '../lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserRole } from '../types';
-import { GraduationCap, ShieldCheck, UserCog, LogIn, Layers } from 'lucide-react';
-import { motion } from 'motion/react';
+import { GraduationCap, ShieldCheck, UserCog, LogIn, Layers, ArrowLeft, UserPlus } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const LoginPage: React.FC = () => {
   const { loading } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -53,7 +54,7 @@ export const LoginPage: React.FC = () => {
           options: {
             data: { 
               full_name: cleanEmail.split('@')[0], 
-              role: selectedRole,
+              role: 'student', // Assigned as student by default, admin changes it later
               password_reset_required: isDefaultPassword && !['arnab.roy@anudip.org', 'arnabredmi3sprime@gmail.com', 'arnabsukanya@gmail.com'].includes(cleanEmail)
             }
           }
@@ -161,16 +162,67 @@ export const LoginPage: React.FC = () => {
           className="absolute top-1/3 left-1/4 w-[350px] h-[350px] rounded-full bg-teal-100/50 blur-3xl"
         />
 
+        {/* Dynamic Sweeping Ambient Light Beam */}
+        <motion.div
+          animate={{
+            x: ['-100%', '100%'],
+            y: ['-30%', '30%'],
+          }}
+          transition={{
+            duration: 18,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute inset-0 bg-gradient-to-tr from-transparent via-teal-400/10 to-transparent -rotate-45 scale-150 pointer-events-none"
+        />
+
         {/* Sophisticated SVG Grid Pattern */}
         <div 
           className="absolute inset-0 bg-[linear-gradient(to_right,#0d94880c_1px,transparent_1px),linear-gradient(to_bottom,#0d94880c_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)]"
         />
 
+        {/* Animated Parallax Liquid Waves at the Bottom */}
+        <div className="absolute bottom-0 left-0 right-0 w-full h-[280px] overflow-hidden opacity-40 select-none">
+          {/* Wave 1 */}
+          <motion.svg
+            className="absolute bottom-0 left-0 w-[200%] h-full text-teal-400/15 fill-current"
+            viewBox="0 0 1440 320"
+            preserveAspectRatio="none"
+            animate={{
+              x: [0, -1440],
+              y: [0, 8, -5, 0],
+            }}
+            transition={{
+              x: { duration: 25, repeat: Infinity, ease: "linear" },
+              y: { duration: 10, repeat: Infinity, ease: "easeInOut" }
+            }}
+          >
+            <path d="M0,160 C320,300 480,120 720,220 C960,320 1120,100 1440,180 C1760,260 1920,140 2160,200 C2400,260 2560,120 2880,180 L2880,320 L0,320 Z" />
+          </motion.svg>
+
+          {/* Wave 2 */}
+          <motion.svg
+            className="absolute bottom-0 left-0 w-[200%] h-full text-emerald-400/10 fill-current"
+            viewBox="0 0 1440 320"
+            preserveAspectRatio="none"
+            animate={{
+              x: [-1440, 0],
+              y: [0, -12, 6, 0],
+            }}
+            transition={{
+              x: { duration: 35, repeat: Infinity, ease: "linear" },
+              y: { duration: 14, repeat: Infinity, ease: "easeInOut" }
+            }}
+          >
+            <path d="M0,120 C240,240 480,80 720,180 C960,280 1200,100 1440,140 C1680,180 1920,80 2160,160 C2400,240 2640,120 2880,140 L2880,320 L0,320 Z" />
+          </motion.svg>
+        </div>
+
         {/* Floating Live Background Particles */}
         {particles.map((p) => (
           <motion.div
             key={p.id}
-            className="absolute rounded-full bg-teal-500/25 blur-[1px]"
+            className="absolute rounded-full bg-gradient-to-r from-teal-400/30 to-emerald-400/25 blur-[1px]"
             style={{
               width: p.size,
               height: p.size,
@@ -179,9 +231,9 @@ export const LoginPage: React.FC = () => {
             }}
             animate={{
               y: [0, -650],
-              x: [0, Math.sin(p.id) * 50, -Math.sin(p.id) * 50, 0],
-              opacity: [0, 0.7, 0.4, 0],
-              scale: [0.8, 1.2, 0.9, 0.8],
+              x: [0, Math.sin(p.id) * 60, -Math.sin(p.id) * 60, 0],
+              opacity: [0, 0.8, 0.4, 0],
+              scale: [0.8, 1.3, 0.9, 0.8],
             }}
             transition={{
               duration: p.duration,
@@ -234,53 +286,83 @@ export const LoginPage: React.FC = () => {
               </motion.div>
             )}
 
-            {/* Elegant, animated Role Selection Tabs */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-teal-900/70 ml-1 uppercase tracking-wider">Login as</label>
-              <div className="bg-teal-50/80 p-1.5 rounded-2xl border border-teal-100/50 flex gap-1 relative overflow-hidden">
-                {(['student', 'examiner', 'admin'] as const).map((role) => {
-                  const isActive = selectedRole === role;
-                  const Icon = role === 'student' ? GraduationCap : role === 'examiner' ? UserCog : ShieldCheck;
-                  return (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => setSelectedRole(role)}
-                      className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all relative z-10 select-none cursor-pointer"
-                      style={{
-                        color: isActive ? '#0f766e' : '#4f5e5b',
-                      }}
-                    >
-                      {isActive && (
-                        <motion.div
-                          layoutId="activeRoleBg"
-                          className="absolute inset-0 bg-white shadow-sm border border-teal-100/50 rounded-xl"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
-                      <Icon className="w-3.5 h-3.5 relative z-10" />
-                      <span className="capitalize relative z-10">{role}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <AnimatePresence mode="wait">
+              {!isSignUpMode ? (
+                <motion.div
+                  key="signin"
+                  initial={{ opacity: 0, x: -15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 15 }}
+                  transition={{ duration: 0.25 }}
+                  className="space-y-6"
+                >
+                  {/* Elegant, animated Role Selection Tabs */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-semibold uppercase tracking-widest text-teal-900/60 flex items-center gap-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+                        </span>
+                        Login as
+                      </span>
+                      <motion.span 
+                        key={selectedRole}
+                        initial={{ opacity: 0, scale: 0.9, y: -2 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="text-[10px] font-bold text-teal-600 uppercase tracking-wider bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-100/80 shadow-sm"
+                      >
+                        {selectedRole} Portal
+                      </motion.span>
+                    </div>
 
-            <div className="w-full">
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-teal-900/90 ml-1">Email</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@anudip.org"
-                      className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white/75 px-4 py-2 text-teal-950 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all shadow-inner"
-                    />
+                    <div className="bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50 flex gap-1.5 relative overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+                      {(['student', 'examiner', 'admin'] as const).map((role) => {
+                        const isActive = selectedRole === role;
+                        const Icon = role === 'student' ? GraduationCap : role === 'examiner' ? UserCog : ShieldCheck;
+                        return (
+                          <button
+                            key={role}
+                            type="button"
+                            onClick={() => setSelectedRole(role)}
+                            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all relative z-10 select-none cursor-pointer hover:bg-slate-200/20"
+                            style={{
+                              color: isActive ? '#0f766e' : '#64748b',
+                            }}
+                          >
+                            {isActive && (
+                              <motion.div
+                                layoutId="activeRoleBg"
+                                className="absolute inset-0 bg-white shadow-md border border-teal-100/60 rounded-xl"
+                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                              />
+                            )}
+                            <motion.div
+                              animate={isActive ? { scale: [1, 1.25, 1], rotate: [0, 8, -8, 0] } : {}}
+                              transition={{ duration: 0.4 }}
+                              className="relative z-10"
+                            >
+                              <Icon className={`w-4 h-4 ${isActive ? 'text-teal-600' : 'text-slate-400'}`} />
+                            </motion.div>
+                            <span className="capitalize relative z-10 tracking-wide">{role}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
- 
+
                   <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-teal-900/90 ml-1">Email</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@anudip.org"
+                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white/75 px-4 py-2 text-teal-950 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+   
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-teal-900/90 ml-1">Password</label>
                       <input
@@ -296,22 +378,95 @@ export const LoginPage: React.FC = () => {
                       <Button 
                         onClick={() => handleEmailAuth(false)}
                         disabled={loading}
-                        className="h-12 rounded-2xl bg-teal-600 text-white hover:bg-teal-700 font-semibold shadow-lg shadow-teal-600/10 transition-all duration-200 active:scale-95"
+                        className="h-12 rounded-2xl bg-teal-600 text-white hover:bg-teal-700 font-bold shadow-lg shadow-teal-600/10 transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5"
                       >
+                        <LogIn className="w-4 h-4" />
                         Sign In
                       </Button>
                       <Button 
-                        onClick={() => handleEmailAuth(true)}
-                        disabled={loading}
-                        className="h-12 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-900 font-semibold border border-teal-200/80 transition-all duration-200 active:scale-95"
+                        onClick={() => {
+                          setError(null);
+                          setSuccessMsg(null);
+                          setIsSignUpMode(true);
+                        }}
+                        className="h-12 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold border border-teal-200/80 transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5"
                       >
+                        <UserPlus className="w-4 h-4" />
                         Sign Up
                       </Button>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="signup"
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -15 }}
+                  transition={{ duration: 0.25 }}
+                  className="space-y-6"
+                >
+                  {/* Informational student registration block */}
+                  <div className="bg-gradient-to-r from-teal-50 to-emerald-50/80 border border-teal-100 p-4 rounded-2xl shadow-inner flex items-start gap-3">
+                    <div className="bg-teal-500/10 p-2 rounded-xl text-teal-600 mt-0.5">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-teal-950 uppercase tracking-wider">Default Student Profile</h4>
+                      <p className="text-[11px] text-teal-800/80 leading-normal">
+                        All new registrations are assigned the <strong>Student</strong> role by default. Instructors and administrators must authorize Examiner or Admin permissions after sign-up.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-teal-900/90 ml-1">Email</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@anudip.org"
+                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white/75 px-4 py-2 text-teal-950 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+   
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-teal-900/90 ml-1">Choose a Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="flex h-12 w-full rounded-2xl border border-teal-200 bg-white/75 px-4 py-2 text-teal-950 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all shadow-inner"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <Button 
+                        onClick={() => handleEmailAuth(true)}
+                        disabled={loading}
+                        className="h-12 rounded-2xl bg-teal-600 text-white hover:bg-teal-700 font-bold shadow-lg shadow-teal-600/10 transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Registered
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          setError(null);
+                          setSuccessMsg(null);
+                          setIsSignUpMode(false);
+                        }}
+                        className="h-12 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold border border-teal-200/80 transition-all duration-200 active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        Sign In
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </CardContent>
         </Card>
         <p className="mt-8 text-center text-xs text-teal-900/70 font-medium">
