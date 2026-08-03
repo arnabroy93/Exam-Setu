@@ -7,8 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Question, Exam, ExamSettings, UserProfile } from '../types';
-import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users, FileSpreadsheet, Download, Upload } from 'lucide-react';
 import { RichTextEditor } from './RichTextEditor';
+import { ExcelQuestionModal } from './ExcelQuestionModal';
+import { downloadQuestionTemplate } from '../utils/excelQuestionParser';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
@@ -46,6 +48,15 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+
+  const handleExcelImport = (importedQuestions: Question[], mode: 'append' | 'replace') => {
+    if (mode === 'replace') {
+      setQuestions(importedQuestions);
+    } else {
+      setQuestions(prev => [...prev, ...importedQuestions]);
+    }
+  };
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -346,12 +357,41 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
       </Card>
 
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold">Questions ({questions.length})</h3>
-          <Button onClick={addQuestion} variant="outline" className="border-primary text-primary hover:bg-primary/10">
-            <Plus className="mr-2 w-4 h-4" />
-            Add Question
-          </Button>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-teal-50/50 p-4 rounded-xl border border-teal-100">
+          <div>
+            <h3 className="text-xl font-bold text-teal-950">Questions ({questions.length})</h3>
+            <p className="text-xs text-teal-800/80">Add individual questions manually or import in bulk using Excel</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={downloadQuestionTemplate}
+              className="border-teal-300 text-teal-800 hover:bg-teal-100/60 font-semibold rounded-xl text-xs h-9"
+              title="Download Excel Question Template"
+            >
+              <Download className="mr-1.5 w-3.5 h-3.5 text-teal-600" />
+              Download Template
+            </Button>
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={() => setIsExcelModalOpen(true)}
+              className="border-teal-400 bg-white text-teal-900 hover:bg-teal-50 font-bold rounded-xl text-xs h-9 shadow-sm"
+              title="Import Questions from Excel"
+            >
+              <FileSpreadsheet className="mr-1.5 w-3.5 h-3.5 text-teal-600" />
+              Import Excel
+            </Button>
+            <Button 
+              type="button"
+              onClick={addQuestion} 
+              className="bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs h-9 shadow-md shadow-teal-600/15"
+            >
+              <Plus className="mr-1.5 w-3.5 h-3.5" />
+              Add Question
+            </Button>
+          </div>
         </div>
 
         {questions.map((q, index) => (
@@ -479,6 +519,13 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
           </Card>
         ))}
       </div>
+
+      <ExcelQuestionModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        onImport={handleExcelImport}
+        existingQuestionCount={questions.length}
+      />
     </div>
   );
 };
