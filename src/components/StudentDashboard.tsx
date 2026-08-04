@@ -52,7 +52,15 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         .eq('status', 'published')
         .limit(12);
 
-      setAvailableExams(examsData as any as Exam[] || []);
+      // Filter exams based on student authorization (allowedStudents)
+      const studentIdentifiers = [profile.uid, (profile as any).id, profile.email].filter(Boolean);
+      const studentExams = ((examsData as any as Exam[]) || []).filter(exam => {
+        const allowed = exam.settings?.allowedStudents;
+        if (!allowed || allowed.length === 0) return true; // Public to all students
+        return allowed.some(id => studentIdentifiers.includes(id));
+      });
+
+      setAvailableExams(studentExams);
 
       // Fetch recent attempts using multiple possible IDs (legacy uid and supabase id)
       const searchIds = [profile.uid];
@@ -76,12 +84,12 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         };
       }));
 
-      setAvailableExams(examsData);
+      setAvailableExams(studentExams);
       setRecentAttempts(enrichedAttempts);
       
       // Cache data persistently
       localStorage.setItem(`student_dashboard_v2_${profile.uid}`, JSON.stringify({
-        availableExams: examsData,
+        availableExams: studentExams,
         recentAttempts: enrichedAttempts,
         timestamp: Date.now()
       }));
