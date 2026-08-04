@@ -14,9 +14,11 @@ export interface UserProfile {
 
 export interface Question {
   id: string;
-  type: 'mcq' | 'short' | 'long' | 'fill' | 'boolean' | 'practical';
+  type: 'mcq' | 'short' | 'long' | 'fill' | 'boolean' | 'practical' | 'sjt';
   text: string;
-  options?: string[]; // For MCQ
+  options?: string[]; // For MCQ, SJT
+  optionMarks?: number[]; // For SJT: individual marks assigned to each option
+  allowMultipleSJT?: boolean; // For SJT: allows selecting multiple options
   correctAnswer?: string | string[]; // For MCQ, boolean, fill
   points: number;
 }

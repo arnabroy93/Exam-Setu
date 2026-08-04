@@ -809,6 +809,62 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-6">
+                    {q.type === 'sjt' && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs font-semibold">
+                          <span>Situational Judgement Test</span>
+                          <Badge variant="outline" className="bg-white text-teal-800 border-teal-300 font-bold">
+                            {q.allowMultipleSJT ? 'Multiple Selections Allowed' : 'Single Option Selection'}
+                          </Badge>
+                        </div>
+
+                        <div className="grid gap-3">
+                          {q.options?.map((opt, idx) => {
+                            const isSelected = q.allowMultipleSJT
+                              ? (Array.isArray(answers[q.id]) && (answers[q.id].includes(idx) || answers[q.id].includes(opt)))
+                              : (answers[q.id] === idx || answers[q.id] === opt);
+
+                            const handleSelect = () => {
+                              if (q.allowMultipleSJT) {
+                                const currentAnswers = Array.isArray(answers[q.id]) ? [...answers[q.id]] : (answers[q.id] !== undefined ? [answers[q.id]] : []);
+                                const answerIndex = currentAnswers.findIndex(a => a === idx || a === opt);
+                                if (answerIndex > -1) {
+                                  currentAnswers.splice(answerIndex, 1);
+                                } else {
+                                  currentAnswers.push(idx);
+                                }
+                                setAnswers({ ...answers, [q.id]: currentAnswers });
+                              } else {
+                                setAnswers({ ...answers, [q.id]: idx });
+                              }
+                            };
+
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={handleSelect}
+                                className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all text-left ${
+                                  isSelected 
+                                    ? 'border-teal-600 bg-teal-50/70 shadow-xs' 
+                                    : 'border-border hover:border-teal-300 hover:bg-muted/40'
+                                }`}
+                              >
+                                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-sm shrink-0 transition-all ${
+                                  isSelected 
+                                    ? 'bg-teal-600 text-white border-teal-600' 
+                                    : 'border-border text-muted-foreground'
+                                }`}>
+                                  {q.allowMultipleSJT ? (isSelected ? '✓' : String.fromCharCode(65 + idx)) : String.fromCharCode(65 + idx)}
+                                </div>
+                                <span className="text-base font-medium text-slate-900">{opt}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {q.type === 'mcq' && (
                       <div className="grid gap-4">
                         {q.options?.map((opt, idx) => (

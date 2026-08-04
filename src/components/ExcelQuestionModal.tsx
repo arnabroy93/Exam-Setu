@@ -97,6 +97,8 @@ export const ExcelQuestionModal: React.FC<ExcelQuestionModalProps> = ({
     switch (type) {
       case 'mcq':
         return <Badge className="bg-teal-100 text-teal-800 border-teal-200">MCQ</Badge>;
+      case 'sjt':
+        return <Badge className="bg-amber-100 text-amber-800 border-amber-200 font-bold">SJT</Badge>;
       case 'boolean':
         return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">True/False</Badge>;
       case 'short':

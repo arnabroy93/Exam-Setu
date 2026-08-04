@@ -164,6 +164,33 @@ export const ExamDetailsView: React.FC<ExamDetailsViewProps> = ({ exam, onBack }
                 )}
               </CardHeader>
               <CardContent className="space-y-4">
+                {q.type === 'sjt' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs font-semibold text-teal-900 bg-teal-50 p-2 px-3 rounded-md border border-teal-200">
+                      <span>Situational Judgement Test Options</span>
+                      <Badge variant="outline" className="text-[10px] bg-white border-teal-300 font-bold">
+                        {q.allowMultipleSJT ? 'Multiple Selection' : 'Single Selection'}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {q.options?.map((opt, optIdx) => {
+                        const mark = q.optionMarks?.[optIdx] ?? 0;
+                        return (
+                          <div 
+                            key={optIdx} 
+                            className="p-3 rounded-lg border border-teal-200 bg-teal-50/20 text-sm flex items-center justify-between gap-2"
+                          >
+                            <span className="font-medium text-slate-800">{String.fromCharCode(65 + optIdx)}. {opt}</span>
+                            <Badge className="bg-teal-600 text-white border-none font-bold text-[10px] shrink-0">
+                              {mark > 0 ? `+${mark}` : mark} Marks
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {q.type === 'mcq' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {q.options?.map((opt, optIdx) => (

@@ -1,16 +1,58 @@
 import { Question, Exam, ExamAttempt } from '../types';
 
+export const calculateSJTScore = (question: Question, studentAnswer: any): number => {
+  if (studentAnswer === undefined || studentAnswer === null || studentAnswer === '') return 0;
+
+  const options = question.options || [];
+  const optionMarks = question.optionMarks || [];
+
+  const getItemMark = (item: any): number => {
+    if (item === undefined || item === null) return 0;
+
+    // Check if item is an index number or string index (e.g. 0, "0")
+    if (typeof item === 'number') {
+      return optionMarks[item] !== undefined ? Number(optionMarks[item]) : 0;
+    }
+
+    const parsedIndex = parseInt(String(item), 10);
+    if (!isNaN(parsedIndex) && String(parsedIndex) === String(item).trim() && parsedIndex >= 0 && parsedIndex < options.length) {
+      return optionMarks[parsedIndex] !== undefined ? Number(optionMarks[parsedIndex]) : 0;
+    }
+
+    // Match item against option text
+    const foundIndex = options.findIndex(opt => opt.trim().toLowerCase() === String(item).trim().toLowerCase());
+    if (foundIndex !== -1 && optionMarks[foundIndex] !== undefined) {
+      return Number(optionMarks[foundIndex]);
+    }
+
+    return 0;
+  };
+
+  if (Array.isArray(studentAnswer)) {
+    let totalMarks = 0;
+    studentAnswer.forEach(ans => {
+      totalMarks += getItemMark(ans);
+    });
+    return totalMarks;
+  }
+
+  return getItemMark(studentAnswer);
+};
+
 export const isAnswerCorrect = (question: Question, studentAnswer: any): boolean => {
   if (studentAnswer === undefined || studentAnswer === null || studentAnswer === '') return false;
+
+  if (question.type === 'sjt') {
+    return calculateSJTScore(question, studentAnswer) > 0;
+  }
+
   if (!question.correctAnswer) return false;
   
   if (question.type === 'mcq' || question.type === 'boolean') {
     if (Array.isArray(question.correctAnswer)) {
-      // If it's an array, check if the student's single answer is one of the correct ones
       if (!Array.isArray(studentAnswer)) {
         return question.correctAnswer.includes(studentAnswer);
       }
-      // If student also provided an array (multi-select), check if they match
       return JSON.stringify([...studentAnswer].sort()) === JSON.stringify([...question.correctAnswer].sort());
     }
     return studentAnswer === question.correctAnswer;
@@ -34,27 +76,24 @@ export const calculateAutoScore = (questions: Question[], answers: Record<string
       if (isAnswerCorrect(q, answers[q.id])) {
         score += q.points || 0;
       }
+    } else if (q.type === 'sjt') {
+      score += calculateSJTScore(q, answers[q.id]);
     }
   });
   return score;
 };
 
 export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): number => {
-  // 1. Use already finalized score if available
   if (attempt.status === 'graded' && attempt.score !== undefined) {
     return attempt.score;
   }
 
-  // 2. Use stored autoScore if available
   const autoScore = attempt.autoScore ?? (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
   
-  // 3. Sum manual grades
   const manualTotal = attempt.manualGrades 
     ? (Object.values(attempt.manualGrades) as any[]).reduce((sum, val) => sum + (Number(val) || 0), 0)
     : 0;
   
-  // Requirement: If both MCQ and long questions are there, until long questions are graded (status === 'submitted')
-  // return only auto-score (MCQ).
   if (exam && attempt.status === 'submitted') {
     const hasSubjective = exam.questions.some(q => q.type === 'short' || q.type === 'long' || q.type === 'practical');
     if (hasSubjective) {
@@ -70,10 +109,9 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
 export const calculateEffectiveFullMarks = (questions: Question[], attemptStatus: string): number => {
   const hasSubjective = questions.some(q => q.type === 'short' || q.type === 'long' || q.type === 'practical');
   
-  // Requirement: Until long questions are graded (status === 'submitted'), marks should be based on MCQ
   if (hasSubjective && attemptStatus === 'submitted') {
     return questions.reduce((sum, q) => {
-      if (q.type === 'mcq' || q.type === 'boolean' || q.type === 'fill') {
+      if (q.type === 'mcq' || q.type === 'boolean' || q.type === 'fill' || q.type === 'sjt') {
         return sum + (q.points || 0);
       }
       return sum;

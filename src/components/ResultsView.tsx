@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { metadataCache } from '../lib/metadataCache';
-import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks } from '../lib/gradingUtils';
+import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, calculateSJTScore } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -316,11 +316,15 @@ export const ResultsView: React.FC = () => {
                           <Badge variant="outline" className="shrink-0">
                             {q.points} Marks
                           </Badge>
-                          {!isSubjective && (
+                          {q.type === 'sjt' ? (
+                            <Badge variant="outline" className="text-[10px] h-5 bg-teal-50 text-teal-800 border-teal-300 font-bold">
+                              Awarded: {calculateSJTScore(q, studentAnswer)} / {q.points}
+                            </Badge>
+                          ) : !isSubjective ? (
                             <Badge variant={isCorrect ? "default" : "destructive"} className="text-[10px] h-5">
                               {isCorrect ? "Correct" : "Incorrect"}
                             </Badge>
-                          )}
+                          ) : null}
                           {isSubjective && selectedAttempt.manualGrades?.[q.id] !== undefined && (
                             <Badge variant="secondary" className="text-[10px] h-5">
                               Awarded: {selectedAttempt.manualGrades[q.id]}
@@ -328,42 +332,83 @@ export const ResultsView: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="p-2 rounded bg-muted/50">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Your Answer:</p>
-                          {q.type === 'practical' && studentAnswer ? (
-                            <div className="flex gap-2 items-center">
-                              <span className="font-medium text-xs break-all">{studentAnswer.name}</span>
-                              <a 
-                                href={studentAnswer.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="text-xs text-primary hover:underline font-medium bg-primary/10 px-2 py-1 rounded"
-                              >
-                                View File
-                              </a>
+                      
+                      {q.type === 'sjt' ? (
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="p-3 rounded-lg bg-teal-50/50 border border-teal-200">
+                            <p className="text-[10px] font-bold text-teal-900 uppercase mb-2">Options & Assigned Individual Marks:</p>
+                            <div className="space-y-1.5">
+                              {q.options?.map((opt, optIdx) => {
+                                const mark = q.optionMarks?.[optIdx] ?? 0;
+                                const isSelected = q.allowMultipleSJT
+                                  ? (Array.isArray(studentAnswer) && (studentAnswer.includes(optIdx) || studentAnswer.includes(opt)))
+                                  : (studentAnswer === optIdx || studentAnswer === opt);
+
+                                return (
+                                  <div 
+                                    key={optIdx} 
+                                    className={`p-2 rounded-md text-xs flex items-center justify-between border ${
+                                      isSelected 
+                                        ? 'bg-teal-100/80 border-teal-400 font-bold text-teal-950' 
+                                        : 'bg-white border-slate-200 text-slate-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="shrink-0">{String.fromCharCode(65 + optIdx)}.</span>
+                                      <span className="truncate">{opt}</span>
+                                      {isSelected && (
+                                        <Badge variant="outline" className="bg-teal-600 text-white border-none text-[9px] px-1 py-0">
+                                          Your Choice
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <span className="shrink-0 text-slate-600 font-mono font-bold ml-2">
+                                      {mark > 0 ? `+${mark}` : mark} Marks
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          ) : (
-                            <p>{studentAnswer || <span className="italic text-muted-foreground">No answer</span>}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="p-2 rounded bg-muted/50">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Your Answer:</p>
+                            {q.type === 'practical' && studentAnswer ? (
+                              <div className="flex gap-2 items-center">
+                                <span className="font-medium text-xs break-all">{studentAnswer.name}</span>
+                                <a 
+                                  href={studentAnswer.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="text-xs text-primary hover:underline font-medium bg-primary/10 px-2 py-1 rounded"
+                                >
+                                  View File
+                                </a>
+                              </div>
+                            ) : (
+                              <p>{studentAnswer || <span className="italic text-muted-foreground">No answer</span>}</p>
+                            )}
+                          </div>
+                          {(q.type === 'mcq' || q.type === 'boolean') && (
+                            <div className="p-2 rounded bg-green-500/5 border border-green-500/10">
+                              <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Correct Answer:</p>
+                              <p className="text-green-700 font-medium">
+                                {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer}
+                              </p>
+                            </div>
+                          )}
+                          {(q.type === 'short' || q.type === 'long') && q.correctAnswer && (
+                            <div className="p-2 rounded bg-primary/5 border border-primary/10">
+                              <p className="text-[10px] font-bold text-primary uppercase mb-1">Model Answer / Rubric:</p>
+                              <p className="text-primary font-medium whitespace-pre-wrap">
+                                {q.correctAnswer as string}
+                              </p>
+                            </div>
                           )}
                         </div>
-                        {(q.type === 'mcq' || q.type === 'boolean') && (
-                          <div className="p-2 rounded bg-green-500/5 border border-green-500/10">
-                            <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Correct Answer:</p>
-                            <p className="text-green-700 font-medium">
-                              {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer}
-                            </p>
-                          </div>
-                        )}
-                        {(q.type === 'short' || q.type === 'long') && q.correctAnswer && (
-                          <div className="p-2 rounded bg-primary/5 border border-primary/10">
-                            <p className="text-[10px] font-bold text-primary uppercase mb-1">Model Answer / Rubric:</p>
-                            <p className="text-primary font-medium whitespace-pre-wrap">
-                              {q.correctAnswer as string}
-                            </p>
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
                   );
                 })}

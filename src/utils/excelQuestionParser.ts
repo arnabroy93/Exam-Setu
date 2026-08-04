@@ -77,17 +77,17 @@ export const downloadQuestionTemplate = () => {
       'Correct Answer': 'A process is an independent executing program with its own dedicated memory space, whereas a thread is a lightweight thread of execution within a process sharing resources.'
     },
     {
-      'Question Text': 'Write a SQL query to select all students with scores above 80 in Mathematics, and upload your script.',
-      'Question Type': 'practical',
+      'Question Text': 'A team member is consistently missing sprint deadlines. What is your most appropriate action?',
+      'Question Type': 'sjt',
       'Marks': 5,
-      'Option A': '',
-      'Option B': '',
-      'Option C': '',
-      'Option D': '',
+      'Option A': 'Schedule a private 1-on-1 meeting to discuss challenges and offer assistance',
+      'Option B': 'Escalate immediately to senior management',
+      'Option C': 'Reassign their tasks to other team members without conversation',
+      'Option D': 'Ignore the delay and hope they catch up next week',
       'Option E': '',
       'Option F': '',
-      'Correct Answer': 'SELECT * FROM students WHERE subject = "Mathematics" AND score > 80;'
-    }
+      'Correct Answer': 'Marks A: 5 | Marks B: 3 | Marks C: 1 | Marks D: 0'
+    },
   ];
 
   const wsQuestions = XLSX.utils.json_to_sheet(sampleData, {
@@ -241,7 +241,9 @@ export const parseQuestionsFromExcel = async (file: File): Promise<ParseResult> 
 
           // Determine Question Type
           let type: Question['type'] = 'mcq';
-          if (rawType.includes('bool') || rawType.includes('true') || rawType.includes('tf') || rawType === 't/f') {
+          if (rawType.includes('sjt') || rawType.includes('situational') || rawType.includes('judgment') || rawType.includes('judgement')) {
+            type = 'sjt';
+          } else if (rawType.includes('bool') || rawType.includes('true') || rawType.includes('tf') || rawType === 't/f') {
             type = 'boolean';
           } else if (rawType.includes('short')) {
             type = 'short';
@@ -265,9 +267,45 @@ export const parseQuestionsFromExcel = async (file: File): Promise<ParseResult> 
 
           // Options logic
           let options: string[] | undefined = undefined;
+          let optionMarks: number[] | undefined = undefined;
+          let allowMultipleSJT: boolean | undefined = undefined;
           let correctAnswer: string | string[] = '';
 
-          if (type === 'mcq') {
+          if (type === 'sjt') {
+            const rawOpts = [optA, optB, optC, optD, optE, optF].filter(o => o !== '');
+            options = rawOpts.length >= 2 ? rawOpts : ['Option 1', 'Option 2', 'Option 3', 'Option 4'];
+
+            const markA = findVal(['Marks A', 'MarksA', 'Mark A', 'A Marks', 'Option A Marks', 'Marks 1']);
+            const markB = findVal(['Marks B', 'MarksB', 'Mark B', 'B Marks', 'Option B Marks', 'Marks 2']);
+            const markC = findVal(['Marks C', 'MarksC', 'Mark C', 'C Marks', 'Option C Marks', 'Marks 3']);
+            const markD = findVal(['Marks D', 'MarksD', 'Mark D', 'D Marks', 'Option D Marks', 'Marks 4']);
+            const markE = findVal(['Marks E', 'MarksE', 'Mark E', 'E Marks', 'Option E Marks', 'Marks 5']);
+            const markF = findVal(['Marks F', 'MarksF', 'Mark F', 'F Marks', 'Option F Marks', 'Marks 6']);
+
+            const rawMarksArr = [markA, markB, markC, markD, markE, markF].slice(0, options.length);
+
+            if (rawMarksArr.some(m => m !== '')) {
+              optionMarks = rawMarksArr.map(m => parseFloat(m) || 0);
+            } else if (rawAns) {
+              const parsedMarks: number[] = new Array(options.length).fill(0);
+              const matches = rawAns.matchAll(/(?:Marks\s*|Opt\s*|Option\s*)?([A-F])\s*[:=]\s*(-?\d+(?:\.\d+)?)/gi);
+              let foundAny = false;
+              for (const match of matches) {
+                const letterIdx = match[1].toUpperCase().charCodeAt(0) - 65;
+                if (letterIdx >= 0 && letterIdx < options.length) {
+                  parsedMarks[letterIdx] = parseFloat(match[2]);
+                  foundAny = true;
+                }
+              }
+              optionMarks = foundAny ? parsedMarks : [5, 3, 1, 0].slice(0, options.length);
+            } else {
+              optionMarks = [5, 3, 1, 0].slice(0, options.length);
+            }
+
+            const multiVal = findVal(['Allow Multiple', 'Multiple Selection', 'Multi Select', 'Allow Multiple Selections', 'Multi']);
+            allowMultipleSJT = multiVal.toLowerCase().includes('true') || multiVal.toLowerCase().includes('yes') || multiVal === '1';
+            correctAnswer = '';
+          } else if (type === 'mcq') {
             const rawOpts = [optA, optB, optC, optD, optE, optF].filter(o => o !== '');
             if (rawOpts.length < 2) {
               warnings.push(`Row ${rowNum}: MCQ question "${text.substring(0, 30)}..." has fewer than 2 options. Added default options.`);
@@ -338,6 +376,8 @@ export const parseQuestionsFromExcel = async (file: File): Promise<ParseResult> 
             type,
             text,
             options,
+            optionMarks,
+            allowMultipleSJT,
             correctAnswer,
             points
           };

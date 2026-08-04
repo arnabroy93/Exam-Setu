@@ -138,7 +138,27 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
   };
 
   const updateQuestion = (id: string, updates: Partial<Question>) => {
-    setQuestions(questions.map(q => q.id === id ? { ...q, ...updates } : q));
+    setQuestions(questions.map(q => {
+      if (q.id !== id) return q;
+
+      let newQuestion = { ...q, ...updates };
+
+      if (updates.type === 'sjt') {
+        const currentOptions = newQuestion.options?.length ? newQuestion.options : ['Action Option A', 'Action Option B', 'Action Option C', 'Action Option D'];
+        const currentOptionMarks = newQuestion.optionMarks?.length ? newQuestion.optionMarks : [5, 3, 1, 0];
+        const maxMarks = Math.max(...currentOptionMarks, 1);
+
+        newQuestion = {
+          ...newQuestion,
+          options: currentOptions,
+          optionMarks: currentOptionMarks,
+          allowMultipleSJT: newQuestion.allowMultipleSJT ?? false,
+          points: newQuestion.points || maxMarks
+        };
+      }
+
+      return newQuestion;
+    }));
   };
 
   const removeQuestion = (id: string) => {
@@ -695,6 +715,7 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="mcq">MCQ</SelectItem>
+                      <SelectItem value="sjt">SJT (Situational Judgement)</SelectItem>
                       <SelectItem value="short">Short Answer</SelectItem>
                       <SelectItem value="long">Long Answer</SelectItem>
                       <SelectItem value="boolean">True/False</SelectItem>
@@ -706,6 +727,121 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
                   <Trash2 className="w-5 h-5" />
                 </Button>
               </div>
+
+              {q.type === 'sjt' && (
+                <div className="space-y-4 mt-4 p-4 rounded-xl border border-teal-200/80 bg-teal-50/30 animate-in fade-in duration-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white rounded-lg border border-teal-100">
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                        <Globe className="w-4 h-4 text-teal-600" />
+                        Situational Judgement Test (SJT)
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Assign individual marks to each option choice. Student marks will be calculated automatically based on selected option(s).
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-200 shrink-0">
+                      <Checkbox 
+                        id={`sjt-multi-${q.id}`}
+                        checked={q.allowMultipleSJT || false}
+                        onCheckedChange={(checked) => updateQuestion(q.id, { allowMultipleSJT: Boolean(checked) })}
+                        className="border-teal-400 data-[state=checked]:bg-teal-600"
+                      />
+                      <Label htmlFor={`sjt-multi-${q.id}`} className="text-xs font-bold text-teal-950 cursor-pointer">
+                        Allow Multiple Selections
+                      </Label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-slate-700">Options & Assigned Marks</Label>
+                      <p className="text-[10px] text-teal-800 font-medium">
+                        Max option score: <span className="font-bold">{Math.max(...(q.optionMarks || [0]), 0)} Marks</span>
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {q.options?.map((opt, optIdx) => {
+                        const currentMarks = q.optionMarks?.[optIdx] ?? 0;
+                        return (
+                          <div key={optIdx} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                            <div className="w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                              {String.fromCharCode(65 + optIdx)}
+                            </div>
+                            <Input 
+                              value={opt} 
+                              onChange={(e) => {
+                                const newOpts = [...(q.options || [])];
+                                newOpts[optIdx] = e.target.value;
+                                updateQuestion(q.id, { options: newOpts });
+                              }} 
+                              placeholder={`Option ${optIdx + 1} description / response action...`}
+                              className="flex-1 text-xs h-9 font-medium"
+                            />
+                            <div className="flex items-center gap-1.5 shrink-0 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Marks:</span>
+                              <Input 
+                                type="number"
+                                step="0.5"
+                                value={currentMarks}
+                                onChange={(e) => {
+                                  const newMarks = [...(q.optionMarks || [])];
+                                  newMarks[optIdx] = parseFloat(e.target.value) || 0;
+                                  const maxOptMark = Math.max(...newMarks, 1);
+                                  updateQuestion(q.id, { optionMarks: newMarks, points: Math.max(q.points, maxOptMark) });
+                                }}
+                                className="w-16 h-7 text-xs text-center font-bold bg-white"
+                              />
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-slate-400 hover:text-red-600 shrink-0"
+                              onClick={() => {
+                                const newOpts = (q.options || []).filter((_, idx) => idx !== optIdx);
+                                const newMarks = (q.optionMarks || []).filter((_, idx) => idx !== optIdx);
+                                updateQuestion(q.id, { options: newOpts, optionMarks: newMarks });
+                              }}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between">
+                      <Button 
+                        type="button"
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          const newOpts = [...(q.options || []), `Option ${(q.options?.length || 0) + 1}`];
+                          const newMarks = [...(q.optionMarks || []), 0];
+                          updateQuestion(q.id, { options: newOpts, optionMarks: newMarks });
+                        }}
+                        className="h-8 text-xs font-bold border-teal-300 text-teal-800 hover:bg-teal-50 bg-white"
+                      >
+                        <Plus className="mr-1.5 w-3.5 h-3.5 text-teal-600" />
+                        Add SJT Option
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const maxMark = Math.max(...(q.optionMarks || [1]), 1);
+                          updateQuestion(q.id, { points: maxMark });
+                        }}
+                        className="text-[11px] font-bold text-teal-700 hover:text-teal-900 underline"
+                      >
+                        Auto-set Question Marks to Max Option Score ({Math.max(...(q.optionMarks || [1]), 1)})
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {q.type === 'mcq' && (
                 <div className="space-y-4 mt-4">
