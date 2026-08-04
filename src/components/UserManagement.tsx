@@ -4,7 +4,7 @@ import { UserProfile, UserRole } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw, Trash2, ChevronLeft, ChevronRight, AlertTriangle, FileSpreadsheet, FileText, File as FilePdf, Download } from 'lucide-react';
+import { Users, Shield, UserCog, GraduationCap, Search, RefreshCw, Trash2, ChevronLeft, ChevronRight, AlertTriangle, FileSpreadsheet, FileText, File as FilePdf, Download, CheckCircle2, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../lib/AuthContext';
@@ -55,6 +55,8 @@ export const UserManagement: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async (newPage: number, force = false) => {
     setLoading(true);
@@ -112,20 +114,97 @@ export const UserManagement: React.FC = () => {
     fetchUsers(1, true);
   };
 
-  const handleRoleChange = async (userId: string, newRole: UserRole) => {
+  const handleRoleChange = async (targetUser: UserProfile, newRole: UserRole) => {
+    const userId = targetUser.uid || (targetUser as any).id;
+    const email = targetUser.email;
+    
+    if (!email && !userId) {
+      alert('Cannot update user role: user identifier is missing.');
+      return;
+    }
+
+    const key = userId || email;
+    setIsUpdatingRole(key);
+    setSuccessMessage(null);
+
     try {
-      const user = users.find(u => u.uid === userId || u.id === userId);
-      await supabase.from('users').update({ role: newRole }).eq('id', userId);
-      
-      if (user && user.role !== newRole) {
-        if (currentUserProfile && user) {
-          await logUserActivity(currentUserProfile, 'ROLE_CHANGE', `Changed role of user ${user.email} to ${newRole}`);
-        }
-        setUsers(users.map(u => (u.uid === userId || u.id === userId) ? { ...u, role: newRole } : u));
+      let updateSuccess = false;
+
+      // 1. Try updating by Supabase table primary key 'id'
+      if ((targetUser as any).id) {
+        const { error } = await supabase
+          .from('users')
+          .update({ role: newRole, updatedAt: Date.now() })
+          .eq('id', (targetUser as any).id);
+        
+        if (!error) updateSuccess = true;
       }
-    } catch (error) {
+
+      // 2. Try updating by 'uid' if 'id' didn't succeed
+      if (!updateSuccess && targetUser.uid) {
+        const { error } = await supabase
+          .from('users')
+          .update({ role: newRole, updatedAt: Date.now() })
+          .eq('uid', targetUser.uid);
+        
+        if (!error) updateSuccess = true;
+      }
+
+      // 3. Fallback: update by unique email
+      if (!updateSuccess && email) {
+        const { error } = await supabase
+          .from('users')
+          .update({ role: newRole, updatedAt: Date.now() })
+          .eq('email', email);
+        
+        if (error) {
+          throw error;
+        }
+        updateSuccess = true;
+      }
+
+      // Invalidate cached session profile for this user so they pick up new role
+      if (userId) {
+        localStorage.removeItem(`acadex_profile_${userId}`);
+        sessionStorage.removeItem(`acadex_session_profile_${userId}`);
+      }
+      if ((targetUser as any).id) {
+        localStorage.removeItem(`acadex_profile_${(targetUser as any).id}`);
+        sessionStorage.removeItem(`acadex_session_profile_${(targetUser as any).id}`);
+      }
+
+      // Log activity
+      if (currentUserProfile) {
+        await logUserActivity(
+          currentUserProfile, 
+          'ROLE_CHANGE', 
+          `Changed role of user ${email || userId} to ${newRole}`
+        );
+      }
+
+      // Helper to update role in user lists
+      const updateList = (list: UserProfile[]) =>
+        list.map(u => {
+          const uId = u.uid || (u as any).id;
+          const targetUId = targetUser.uid || (targetUser as any).id;
+          if ((uId && targetUId && uId === targetUId) || (u.email && email && u.email === email)) {
+            return { ...u, role: newRole };
+          }
+          return u;
+        });
+
+      // Update React state in both 'users' array and 'searchBuffer'
+      setUsers(prev => updateList(prev));
+      setSearchBuffer(prev => prev ? updateList(prev) : null);
+
+      setSuccessMessage(`User role for ${targetUser.displayName || email} successfully changed to "${newRole.toUpperCase()}".`);
+      setTimeout(() => setSuccessMessage(null), 5000);
+
+    } catch (error: any) {
       console.error('Error updating user role:', error);
-      alert('Failed to update user role.');
+      alert('Failed to update user role: ' + (error.message || 'Database update error.'));
+    } finally {
+      setIsUpdatingRole(null);
     }
   };
 
@@ -460,6 +539,18 @@ export const UserManagement: React.FC = () => {
         </div>
       </div>
 
+      {successMessage && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+          <button onClick={() => setSuccessMessage(null)} className="text-emerald-600 hover:text-emerald-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <Card className="border-2 border-primary/5 shadow-sm">
         <CardHeader className="pb-3 border-b bg-muted/20">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -551,8 +642,13 @@ export const UserManagement: React.FC = () => {
                       <TableCell className="px-4">
                         <Select 
                           value={user.role} 
-                          onValueChange={(value: UserRole) => handleRoleChange(user.uid! || user.id!, value)}
-                          disabled={(user.uid || user.id) === currentUserProfile?.uid}
+                          onValueChange={(value: UserRole) => handleRoleChange(user, value)}
+                          disabled={
+                            isUpdatingRole === (user.uid || (user as any).id) || 
+                            isUpdatingRole === user.email || 
+                            (user.uid || (user as any).id) === currentUserProfile?.uid || 
+                            user.email === currentUserProfile?.email
+                          }
                         >
                           <SelectTrigger className="w-32 h-9 text-xs font-medium">
                             <SelectValue />
