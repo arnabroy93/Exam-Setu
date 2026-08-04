@@ -7,10 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Question, Exam, ExamSettings, UserProfile } from '../types';
-import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users, FileSpreadsheet, Download, Upload } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Shield, Shuffle, Layout, Lock, Users, FileSpreadsheet, Download, Upload, Clock, Globe } from 'lucide-react';
 import { RichTextEditor } from './RichTextEditor';
 import { ExcelQuestionModal } from './ExcelQuestionModal';
 import { downloadQuestionTemplate } from '../utils/excelQuestionParser';
+import { 
+  timestampToISTInputValue, 
+  istInputValueToTimestamp, 
+  formatInIST, 
+  getExamAvailabilityState, 
+  getAvailabilityBadgeInfo 
+} from '../utils/timeUtils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
@@ -23,10 +30,10 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
   const [instructions, setInstructions] = useState(initialExam?.instructions || 'Please read all questions carefully.');
   const [duration, setDuration] = useState(initialExam?.duration || 60);
   const [startTime, setStartTime] = useState<string>(
-    initialExam?.startTime ? new Date(initialExam.startTime).toISOString().slice(0, 16) : ''
+    initialExam?.startTime ? timestampToISTInputValue(initialExam.startTime) : ''
   );
   const [endTime, setEndTime] = useState<string>(
-    initialExam?.endTime ? new Date(initialExam.endTime).toISOString().slice(0, 16) : ''
+    initialExam?.endTime ? timestampToISTInputValue(initialExam.endTime) : ''
   );
   const [questions, setQuestions] = useState<Question[]>(initialExam?.questions || []);
   const [status, setStatus] = useState<Exam['status']>(initialExam?.status || 'published');
@@ -115,8 +122,14 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
       updatedAt: Date.now()
     };
 
-    if (startTime) newExam.startTime = new Date(startTime).getTime();
-    if (endTime) newExam.endTime = new Date(endTime).getTime();
+    if (startTime) {
+      const startTs = istInputValueToTimestamp(startTime);
+      if (startTs) newExam.startTime = startTs;
+    }
+    if (endTime) {
+      const endTs = istInputValueToTimestamp(endTime);
+      if (endTs) newExam.endTime = endTs;
+    }
 
     try {
       const { error: upsertError } = await supabase.from('exams').upsert(newExam, { onConflict: 'id' });
@@ -199,14 +212,66 @@ export const ExamCreator: React.FC<{ onBack: () => void, initialExam?: Exam }> =
               <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-teal-50/50 p-4 rounded-xl border border-teal-100">
             <div className="space-y-2">
-              <Label htmlFor="startTime">Start Date & Time (Optional)</Label>
-              <Input id="startTime" type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              <Label htmlFor="startTime" className="font-bold text-xs text-teal-950 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-teal-600" /> Start Date & Time (IST / GMT+5:30)
+              </Label>
+              <Input 
+                id="startTime" 
+                type="datetime-local" 
+                value={startTime} 
+                onChange={(e) => setStartTime(e.target.value)} 
+                className="font-mono text-xs border-teal-200 bg-white"
+              />
+              <div className="flex items-center justify-between text-[11px] text-teal-700/80">
+                <span>{startTime ? formatInIST(istInputValueToTimestamp(startTime)) : 'Available immediately'}</span>
+                <button
+                  type="button"
+                  onClick={() => setStartTime(timestampToISTInputValue(Date.now()))}
+                  className="text-teal-700 underline font-semibold hover:text-teal-900"
+                >
+                  Start Now (IST)
+                </button>
+              </div>
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="endTime">Due Date & Time (Optional)</Label>
-              <Input id="endTime" type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <Label htmlFor="endTime" className="font-bold text-xs text-teal-950 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-teal-600" /> Due Date & Time (IST / GMT+5:30)
+              </Label>
+              <Input 
+                id="endTime" 
+                type="datetime-local" 
+                value={endTime} 
+                onChange={(e) => setEndTime(e.target.value)} 
+                className="font-mono text-xs border-teal-200 bg-white"
+              />
+              <div className="flex items-center justify-between text-[11px] text-teal-700/80">
+                <span>{endTime ? formatInIST(istInputValueToTimestamp(endTime)) : 'No due date'}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const startTs = istInputValueToTimestamp(startTime) || Date.now();
+                      setEndTime(timestampToISTInputValue(startTs + 24 * 3600 * 1000));
+                    }}
+                    className="text-teal-700 underline font-semibold hover:text-teal-900"
+                  >
+                    +24h
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const startTs = istInputValueToTimestamp(startTime) || Date.now();
+                      setEndTime(timestampToISTInputValue(startTs + 7 * 24 * 3600 * 1000));
+                    }}
+                    className="text-teal-700 underline font-semibold hover:text-teal-900"
+                  >
+                    +7 Days
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div className="space-y-2">

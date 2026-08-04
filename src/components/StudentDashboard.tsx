@@ -6,7 +6,14 @@ import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Clock, Trophy, Calendar, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { BookOpen, Clock, Trophy, Calendar, ArrowRight, AlertCircle, RefreshCw, Lock, Globe, CheckCircle2 } from 'lucide-react';
+import { 
+  formatInIST, 
+  formatShortIST, 
+  getExamAvailabilityState, 
+  getAvailabilityBadgeInfo, 
+  getCurrentISTDisplay 
+} from '../utils/timeUtils';
 
 export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onViewResults: () => void }> = ({ onStartExam, onViewResults }) => {
   const { profile } = useAuth();
@@ -144,60 +151,127 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Enrolled Exams */}
           <div className="lg:col-span-3 space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold">Enrolled Exams</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-teal-600" />
+                  Available & Scheduled Examinations
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Exam availability & due dates strictly follow India Standard Time (IST / GMT+5:30).
+                </p>
+              </div>
+              <Badge className="bg-teal-50 text-teal-800 border-teal-200 self-start sm:self-auto font-mono text-xs">
+                <Globe className="w-3 h-3 mr-1 text-teal-600" />
+                IST: {getCurrentISTDisplay()}
+              </Badge>
             </div>
             
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2">
               {availableExams.length === 0 ? (
-                <Card className="p-12 text-center border-dashed col-span-2">
-                  <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                  <p className="text-muted-foreground">No exams are currently available for you.</p>
+                <Card className="p-12 text-center border-dashed col-span-2 rounded-2xl bg-teal-50/20">
+                  <BookOpen className="w-12 h-12 mx-auto mb-4 text-teal-600/30" />
+                  <p className="text-muted-foreground font-medium">No active or scheduled examinations are currently assigned.</p>
                 </Card>
               ) : (
-                availableExams.map((exam) => (
-                  <Card key={exam.id} className="group hover:border-primary/50 transition-colors">
-                    <CardContent className="p-6 flex flex-col justify-between gap-4">
-                      <div className="space-y-1">
-                        <h4 className="font-bold text-lg group-hover:text-primary transition-colors">{exam.title}</h4>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {exam.duration} mins
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {exam.endTime ? `Due: ${new Date(exam.endTime).toLocaleDateString()}` : 'No due date'}
-                          </span>
+                availableExams.map((exam) => {
+                  const badgeInfo = getAvailabilityBadgeInfo(exam);
+                  return (
+                    <Card key={exam.id} className="group hover:border-teal-300 transition-all shadow-xs rounded-2xl border-teal-100/80 overflow-hidden">
+                      <CardContent className="p-6 flex flex-col justify-between gap-5">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-bold text-lg text-slate-900 group-hover:text-teal-700 transition-colors leading-snug">
+                              {exam.title}
+                            </h4>
+                            <Badge variant="outline" className={`shrink-0 text-xs font-bold py-1 px-2.5 rounded-lg border ${badgeInfo.badgeClass}`}>
+                              <span className={`w-2 h-2 rounded-full mr-1.5 ${badgeInfo.dotClass}`} />
+                              {badgeInfo.label}
+                            </Badge>
+                          </div>
+
+                          <p className="text-xs text-slate-600 line-clamp-2">{exam.description || 'No additional description provided.'}</p>
+
+                          <div className="pt-2 grid grid-cols-2 gap-2 text-xs text-teal-900 font-medium">
+                            <div className="flex items-center gap-1.5 bg-teal-50/60 p-2 rounded-lg border border-teal-100/60">
+                              <Clock className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                              <span>{exam.duration} mins</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-teal-50/60 p-2 rounded-lg border border-teal-100/60">
+                              <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                              <span className="truncate">{exam.endTime ? formatShortIST(exam.endTime) : 'No due date'}</span>
+                            </div>
+                          </div>
+
+                          {exam.startTime && (
+                            <div className="text-[11px] text-teal-700/80 font-mono bg-slate-50 p-2 rounded-lg border border-slate-200/60 flex items-center justify-between">
+                              <span className="font-sans font-medium text-slate-500">Start Schedule:</span>
+                              <span className="font-bold">{formatInIST(exam.startTime)}</span>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      <Button onClick={() => onStartExam(exam)} className="w-full">
-                        Start Exam
-                        <ArrowRight className="ml-2 w-4 h-4" />
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))
+
+                        {/* Action button based on availability */}
+                        {badgeInfo.canStudentStart ? (
+                          <Button 
+                            onClick={() => onStartExam(exam)} 
+                            className="w-full bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-xs font-bold"
+                          >
+                            Start Exam Now
+                            <ArrowRight className="ml-2 w-4 h-4" />
+                          </Button>
+                        ) : badgeInfo.state === 'upcoming' ? (
+                          <Button 
+                            disabled 
+                            className="w-full bg-slate-100 text-slate-400 border border-slate-200 rounded-xl font-semibold cursor-not-allowed"
+                          >
+                            <Lock className="w-4 h-4 mr-2 text-slate-400" />
+                            Opens on {exam.startTime ? formatShortIST(exam.startTime) : 'Scheduled Date'}
+                          </Button>
+                        ) : (
+                          <Button 
+                            disabled 
+                            className="w-full bg-red-50 text-red-400 border border-red-100 rounded-xl font-semibold cursor-not-allowed"
+                          >
+                            <AlertCircle className="w-4 h-4 mr-2 text-red-400" />
+                            Exam Closed / Expired
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </div>
 
-          {/* Upcoming Deadlines */}
-          <div className="lg:col-span-3 space-y-6">
-            <h3 className="text-xl font-bold">Upcoming Deadlines</h3>
+          {/* Upcoming & Due Schedules */}
+          <div className="lg:col-span-3 space-y-4">
+            <h3 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-teal-600" />
+              Schedule & Due Dates (IST)
+            </h3>
             <div className="grid gap-4 md:grid-cols-3">
               {availableExams.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No upcoming deadlines.</p>
+                <p className="text-sm text-muted-foreground italic col-span-3">No active or upcoming deadlines.</p>
               ) : (
-                availableExams.map((exam) => (
-                  <div key={exam.id} className="flex items-start gap-3 p-4 rounded-xl bg-destructive/5 border border-destructive/10">
-                    <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-destructive">{exam.title}</p>
-                      <p className="text-xs text-muted-foreground">{exam.endTime ? `Due: ${new Date(exam.endTime).toLocaleDateString()}` : 'No due date'}</p>
+                availableExams.map((exam) => {
+                  const badgeInfo = getAvailabilityBadgeInfo(exam);
+                  return (
+                    <div key={exam.id} className="flex items-start gap-3 p-4 rounded-xl bg-white border border-teal-100 shadow-2xs">
+                      <Clock className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-900">{exam.title}</p>
+                        <p className="text-xs text-teal-800 font-mono">
+                          {exam.endTime ? `Due: ${formatInIST(exam.endTime)}` : 'No due date'}
+                        </p>
+                        <Badge variant="outline" className={`text-[10px] font-bold py-0.5 px-2 rounded ${badgeInfo.badgeClass}`}>
+                          {badgeInfo.label}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -205,31 +279,57 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       ) : (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold">Available Exams</h3>
-            <Button variant="outline" onClick={() => setView('dashboard')}>Back to Dashboard</Button>
+            <div>
+              <h3 className="text-xl font-bold">All Assigned Examinations</h3>
+              <p className="text-xs text-muted-foreground">Times indicated in India Standard Time (GMT+5:30)</p>
+            </div>
+            <Button variant="outline" onClick={() => setView('dashboard')} className="rounded-xl">Back to Dashboard</Button>
           </div>
-          <Card>
+          <Card className="rounded-2xl border-teal-100 overflow-hidden shadow-2xs">
             <CardContent className="p-0">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
+                <thead className="bg-teal-50/60 border-b border-teal-100 text-teal-950 font-bold">
+                  <tr>
                     <th className="p-4 text-left">Exam Title</th>
                     <th className="p-4 text-left">Duration</th>
-                    <th className="p-4 text-left">Due Date</th>
+                    <th className="p-4 text-left">Status (IST)</th>
+                    <th className="p-4 text-left">Start Date (IST)</th>
+                    <th className="p-4 text-left">Due Date (IST)</th>
                     <th className="p-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {availableExams.map(exam => (
-                    <tr key={exam.id} className="border-b last:border-0">
-                      <td className="p-4 font-medium">{exam.title}</td>
-                      <td className="p-4">{exam.duration} mins</td>
-                      <td className="p-4">{exam.endTime ? new Date(exam.endTime).toLocaleDateString() : 'N/A'}</td>
-                      <td className="p-4 text-right">
-                        <Button size="sm" onClick={() => onStartExam(exam)}>Start Exam</Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {availableExams.map(exam => {
+                    const badgeInfo = getAvailabilityBadgeInfo(exam);
+                    return (
+                      <tr key={exam.id} className="border-b last:border-0 hover:bg-teal-50/20 transition-colors">
+                        <td className="p-4 font-semibold text-slate-900">{exam.title}</td>
+                        <td className="p-4 text-xs">{exam.duration} mins</td>
+                        <td className="p-4">
+                          <Badge variant="outline" className={`text-xs font-bold ${badgeInfo.badgeClass}`}>
+                            {badgeInfo.label}
+                          </Badge>
+                        </td>
+                        <td className="p-4 text-xs font-mono">
+                          {exam.startTime ? formatShortIST(exam.startTime) : 'Immediate'}
+                        </td>
+                        <td className="p-4 text-xs font-mono">
+                          {exam.endTime ? formatShortIST(exam.endTime) : 'No due date'}
+                        </td>
+                        <td className="p-4 text-right">
+                          {badgeInfo.canStudentStart ? (
+                            <Button size="sm" onClick={() => onStartExam(exam)} className="bg-teal-600 hover:bg-teal-700 rounded-lg text-xs font-bold">
+                              Start Exam
+                            </Button>
+                          ) : (
+                            <Button size="sm" disabled variant="outline" className="text-xs rounded-lg">
+                              Not Available
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </CardContent>
