@@ -7,7 +7,7 @@ import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, c
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CheckCircle, XCircle, Clock, AlertTriangle, ChevronLeft, FileText, ShieldCheck, CheckCircle2, Download } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, ChevronLeft, FileText, ShieldCheck, CheckCircle2, Download, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import jsPDF from 'jspdf';
@@ -185,6 +185,24 @@ export const ResultsView: React.FC = () => {
   }
 
   if (selectedAttempt) {
+    if (selectedAttempt.isPublished !== true) {
+      return (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <Button variant="ghost" size="sm" onClick={() => setSelectedAttempt(null)}>
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Back to Results
+          </Button>
+          <Card className="p-12 text-center border-amber-200 bg-amber-50/40 rounded-2xl shadow-xs">
+            <AlertTriangle className="w-12 h-12 text-amber-600 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-amber-950 mb-2">Grade Pending Publication</h3>
+            <p className="text-sm text-amber-800 max-w-md mx-auto font-medium">
+              The results for this examination have not been published by the examiner or administrator yet. Please check back later once the grade is published.
+            </p>
+          </Card>
+        </div>
+      );
+    }
+
     const exam = selectedAttempt.exam;
     const examFullMarks = exam ? calculateEffectiveFullMarks(exam.questions, selectedAttempt.status) : 0;
     const currentScore = calculateTotalObtained(selectedAttempt, exam);
@@ -440,8 +458,8 @@ export const ResultsView: React.FC = () => {
                       Taken on {new Date(attempt.startTime).toLocaleDateString()}
                     </p>
                   </div>
-                  <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'} className="capitalize">
-                    {attempt.status === 'submitted' ? 'Pending Grading' : attempt.status}
+                  <Badge variant={attempt.isPublished === true ? (attempt.status === 'graded' ? 'default' : 'secondary') : 'outline'} className={attempt.isPublished === true ? 'capitalize' : 'bg-amber-50 text-amber-800 border-amber-300 capitalize'}>
+                    {attempt.isPublished === true ? (attempt.status === 'submitted' ? 'Submitted (Published)' : attempt.status) : 'Grade Pending Publication'}
                   </Badge>
                 </div>
               </CardHeader>
@@ -450,7 +468,7 @@ export const ResultsView: React.FC = () => {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
                     <p className="text-2xl font-bold text-primary">
-                      {attempt.isPublished !== false ? (
+                      {attempt.isPublished === true ? (
                         (() => {
                           const exam = attempt.exam;
                           const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : 0;
@@ -458,7 +476,10 @@ export const ResultsView: React.FC = () => {
                           return fullMarks > 0 ? `${score} / ${fullMarks}` : `${score}`;
                         })()
                       ) : (
-                        <span className="text-sm font-normal text-muted-foreground italic">Score not published yet</span>
+                        <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 inline-flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          Grade Not Published
+                        </span>
                       )}
                     </p>
                   </div>
@@ -491,10 +512,14 @@ export const ResultsView: React.FC = () => {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      disabled={attempt.isPublished === false}
-                      onClick={() => setSelectedAttempt(attempt)}
+                      disabled={attempt.isPublished !== true}
+                      onClick={() => {
+                        if (attempt.isPublished === true) {
+                          setSelectedAttempt(attempt);
+                        }
+                      }}
                     >
-                      {attempt.isPublished !== false ? 'View Detailed Report' : 'Report Locked'}
+                      {attempt.isPublished === true ? 'View Detailed Report' : 'Report Locked'}
                     </Button>
                   </div>
                 </div>

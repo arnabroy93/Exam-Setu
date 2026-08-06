@@ -222,6 +222,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         answers: sanitizedAnswers,
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         status: 'in-progress',
+        isPublished: false,
         suspiciousActivity: currentLogs,
       };
 
@@ -280,6 +281,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         startTime: endTime ? (endTime - exam.duration * 60 * 1000) : Date.now(),
         endTime: Date.now(),
         status: hasSubjective ? 'submitted' : 'graded',
+        isPublished: false,
         autoScore: autoScore,
         suspiciousActivity: logs.map(log => ({
           timestamp: log.timestamp || Date.now(),
