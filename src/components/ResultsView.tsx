@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { metadataCache } from '../lib/metadataCache';
-import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, calculateSJTScore } from '../lib/gradingUtils';
+import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, calculateSJTScore, isAttemptPublished } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -185,7 +185,7 @@ export const ResultsView: React.FC = () => {
   }
 
   if (selectedAttempt) {
-    if (selectedAttempt.isPublished !== true) {
+    if (!isAttemptPublished(selectedAttempt)) {
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <Button variant="ghost" size="sm" onClick={() => setSelectedAttempt(null)}>
@@ -448,84 +448,87 @@ export const ResultsView: React.FC = () => {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {attempts.map((attempt) => (
-            <Card key={attempt.id} className="overflow-hidden">
-              <CardHeader className="bg-muted/30 pb-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <CardTitle className="text-lg">{attempt.exam?.title || `Attempt ID: ${attempt.id.substr(0, 8)}`}</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      Taken on {new Date(attempt.startTime).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge variant={attempt.isPublished === true ? (attempt.status === 'graded' ? 'default' : 'secondary') : 'outline'} className={attempt.isPublished === true ? 'capitalize' : 'bg-amber-50 text-amber-800 border-amber-300 capitalize'}>
-                    {attempt.isPublished === true ? (attempt.status === 'submitted' ? 'Submitted (Published)' : attempt.status) : 'Grade Pending Publication'}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
-                    <p className="text-2xl font-bold text-primary">
-                      {attempt.isPublished === true ? (
-                        (() => {
-                          const exam = attempt.exam;
-                          const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : 0;
-                          const score = calculateTotalObtained(attempt, exam);
-                          return fullMarks > 0 ? `${score} / ${fullMarks}` : `${score}`;
-                        })()
-                      ) : (
-                        <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 inline-flex items-center gap-1.5">
-                          <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          Grade Not Published
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <p className="font-medium">
-                        {attempt.endTime ? Math.floor((attempt.endTime - attempt.startTime) / 60000) : 'N/A'} Mins
+          {attempts.map((attempt) => {
+            const published = isAttemptPublished(attempt);
+            return (
+              <Card key={attempt.id} className="overflow-hidden">
+                <CardHeader className="bg-muted/30 pb-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-lg">{attempt.exam?.title || `Attempt ID: ${attempt.id.substr(0, 8)}`}</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        Taken on {new Date(attempt.startTime).toLocaleDateString()}
                       </p>
                     </div>
+                    <Badge variant={published ? (attempt.status === 'graded' ? 'default' : 'secondary') : 'outline'} className={published ? 'capitalize' : 'bg-amber-50 text-amber-800 border-amber-300 capitalize'}>
+                      {published ? (attempt.status === 'submitted' ? 'Submitted (Published)' : attempt.status) : 'Grade Pending Publication'}
+                    </Badge>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Integrity</p>
-                    <div className="flex items-center gap-2">
-                      {attempt.suspiciousActivity.length > 0 ? (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-destructive" />
-                          <p className="font-medium text-destructive">{attempt.suspiciousActivity.length} Warnings</p>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-primary" />
-                          <p className="font-medium text-primary">Clean Record</p>
-                        </>
-                      )}
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Score</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {published ? (
+                          (() => {
+                            const exam = attempt.exam;
+                            const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, attempt.status) : 0;
+                            const score = calculateTotalObtained(attempt, exam);
+                            return fullMarks > 0 ? `${score} / ${fullMarks}` : `${score}`;
+                          })()
+                        ) : (
+                          <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 inline-flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            Grade Not Published
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <p className="font-medium">
+                          {attempt.endTime ? Math.floor((attempt.endTime - attempt.startTime) / 60000) : 'N/A'} Mins
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Integrity</p>
+                      <div className="flex items-center gap-2">
+                        {attempt.suspiciousActivity.length > 0 ? (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-destructive" />
+                            <p className="font-medium text-destructive">{attempt.suspiciousActivity.length} Warnings</p>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-primary" />
+                            <p className="font-medium text-primary">Clean Record</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-end justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={!published}
+                        onClick={() => {
+                          if (published) {
+                            setSelectedAttempt(attempt);
+                          }
+                        }}
+                      >
+                        {published ? 'View Detailed Report' : 'Report Locked'}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-end justify-end">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      disabled={attempt.isPublished !== true}
-                      onClick={() => {
-                        if (attempt.isPublished === true) {
-                          setSelectedAttempt(attempt);
-                        }
-                      }}
-                    >
-                      {attempt.isPublished === true ? 'View Detailed Report' : 'Report Locked'}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

@@ -120,3 +120,37 @@ export const calculateEffectiveFullMarks = (questions: Question[], attemptStatus
   
   return questions.reduce((sum, q) => sum + (q.points || 0), 0);
 };
+
+export const isAttemptPublished = (attempt: Partial<ExamAttempt> | null | undefined): boolean => {
+  if (!attempt) return false;
+  if (attempt.isPublished === true) return true;
+  if ((attempt as any).is_published === true) return true;
+  if ((attempt.manualGrades as any)?._isPublished === true) return true;
+  if (attempt.answers?._isPublished === true) return true;
+  return false;
+};
+
+export const prepareAttemptForSupabase = (attempt: any): any => {
+  if (!attempt) return attempt;
+  const published = isAttemptPublished(attempt);
+  const copy = { ...attempt };
+
+  if (copy.answers && typeof copy.answers === 'object') {
+    copy.answers = { ...copy.answers, _isPublished: published };
+  } else {
+    copy.answers = { _isPublished: published };
+  }
+
+  if (copy.manualGrades && typeof copy.manualGrades === 'object') {
+    copy.manualGrades = { ...copy.manualGrades, _isPublished: published };
+  } else {
+    copy.manualGrades = { _isPublished: published };
+  }
+
+  delete copy.isPublished;
+  delete copy.is_published;
+  delete copy.exam;
+  delete copy.examTitle;
+
+  return copy;
+};

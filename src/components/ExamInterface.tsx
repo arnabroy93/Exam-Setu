@@ -7,7 +7,7 @@ import { Exam, ExamAttempt, ActivityLog } from '../types';
 import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
-import { calculateAutoScore } from '../lib/gradingUtils';
+import { calculateAutoScore, prepareAttemptForSupabase } from '../lib/gradingUtils';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat } from '../lib/stats';
 import { DriveFileUploader } from './DriveFileUploader';
@@ -227,7 +227,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       };
 
       try {
-        const cleanAttempt = JSON.parse(JSON.stringify(attempt));
+        const cleanAttempt = prepareAttemptForSupabase(attempt);
         const { error: syncError } = await supabase.from('attempts').upsert(cleanAttempt, { onConflict: 'id' });
         
         if (syncError) {
@@ -297,8 +297,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
 
       console.log('Submitting attempt to Supabase:', attemptId);
       
-      // Final safety check: JSON stringify/parse removes all undefined values
-      const finalAttempt = JSON.parse(JSON.stringify(attemptData));
+      const finalAttempt = prepareAttemptForSupabase(attemptData);
 
       const { error: upsertError } = await supabase.from('attempts').upsert(finalAttempt, { onConflict: 'id' });
       if (upsertError) throw upsertError;

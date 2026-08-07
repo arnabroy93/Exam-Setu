@@ -5,7 +5,7 @@ import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
-import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks, isAttemptPublished, prepareAttemptForSupabase } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -353,7 +353,7 @@ export const StudentReports: React.FC = () => {
       totalFullMarks,
       percentage,
       lastSubmissionTime,
-      allPublished: studentAttempts.length > 0 && studentAttempts.every(a => a.isPublished),
+      allPublished: studentAttempts.length > 0 && studentAttempts.every(a => isAttemptPublished(a)),
       hasPending: studentAttempts.some(a => a.status === 'submitted')
     };
   };
@@ -388,7 +388,8 @@ export const StudentReports: React.FC = () => {
       allResults.forEach((snap: any) => {
         (snap.data || []).forEach((d: any) => {
           const a = d as ExamAttempt;
-          if ((a.status === 'submitted' || a.status === 'graded') && (publish ? !a.isPublished : a.isPublished)) {
+          const pub = isAttemptPublished(a);
+          if ((a.status === 'submitted' || a.status === 'graded') && (publish ? !pub : pub)) {
             attemptsToUpdate.push(a);
           }
         });
@@ -401,18 +402,24 @@ export const StudentReports: React.FC = () => {
       }
 
       // 2. Commit updates using Promise.all for Supabase
-      const updatePromises = attemptsToUpdate.map(attempt =>
-        supabase.from('attempts')
-          .update({ isPublished: publish, lastModified: Date.now() })
-          .eq('id', attempt.id)
-      );
+      const updatePromises = attemptsToUpdate.map(attempt => {
+        const updatedAnswers = { ...(attempt.answers || {}), _isPublished: publish };
+        const updatedManualGrades = { ...(attempt.manualGrades || {}), _isPublished: publish };
+        return supabase.from('attempts')
+          .update({ answers: updatedAnswers, manualGrades: updatedManualGrades })
+          .eq('id', attempt.id);
+      });
       await Promise.all(updatePromises);
       
       // 3. Optimized Local State Update
       const updatedIds = new Set(attemptsToUpdate.map(a => a.id));
       setAttempts(prev => {
-        // Use a more performant way to update large arrays
-        return prev.map(a => updatedIds.has(a.id) ? { ...a, isPublished: publish } : a);
+        return prev.map(a => updatedIds.has(a.id) ? {
+          ...a,
+          isPublished: publish,
+          answers: { ...(a.answers || {}), _isPublished: publish },
+          manualGrades: { ...(a.manualGrades || {}), _isPublished: publish }
+        } : a);
       });
       
       setSelectedStudentIds([]);
@@ -860,10 +867,21 @@ export const StudentReports: React.FC = () => {
   const handleTogglePublish = async (attempt: ExamAttempt) => {
     setIsPublishing(attempt.id);
     try {
-      const newStatus = !attempt.isPublished;
-      await supabase.from('attempts').update({ isPublished: newStatus }).eq('id', attempt.id);
-      // Update local state for immediate feedback
-      setAttempts(prev => prev.map(a => a.id === attempt.id ? { ...a, isPublished: newStatus } : a));
+      const newStatus = !isAttemptPublished(attempt);
+      const updatedAnswers = { ...(attempt.answers || {}), _isPublished: newStatus };
+      const updatedManualGrades = { ...(attempt.manualGrades || {}), _isPublished: newStatus };
+
+      await supabase.from('attempts').update({
+        answers: updatedAnswers,
+        manualGrades: updatedManualGrades
+      }).eq('id', attempt.id);
+
+      setAttempts(prev => prev.map(a => a.id === attempt.id ? {
+        ...a,
+        isPublished: newStatus,
+        answers: updatedAnswers,
+        manualGrades: updatedManualGrades
+      } : a));
     } catch (error) {
       console.error('Error toggling publish status:', error);
       alert('Failed to update publish status.');
@@ -894,24 +912,25 @@ export const StudentReports: React.FC = () => {
       const manualTotal: number = (Object.values(manualGrades) as any[]).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
       const totalScore: number = autoScore + manualTotal;
 
+      const isPub = isAttemptPublished(gradingAttempt);
+      const updatedManualGrades = { ...manualGrades, _isPublished: isPub };
+      const updatedAnswers = { ...(gradingAttempt.answers || {}), _isPublished: isPub };
+
       const updatedAttempt: ExamAttempt = {
         ...gradingAttempt,
-        manualGrades,
+        manualGrades: updatedManualGrades,
+        answers: updatedAnswers,
         autoScore,
         score: totalScore,
         status: 'graded',
+        isPublished: isPub,
         gradedBy: profile?.uid,
         gradedByName: profile?.displayName || 'Unknown'
       };
 
-      await supabase.from('attempts').update({
-        manualGrades,
-        autoScore,
-        score: totalScore,
-        status: 'graded',
-        gradedBy: profile?.uid,
-        gradedByName: profile?.displayName || 'Unknown'
-      }).eq('id', gradingAttempt.id);
+      const payload = prepareAttemptForSupabase(updatedAttempt);
+
+      await supabase.from('attempts').update(payload).eq('id', gradingAttempt.id);
       
       // Update local attempts state immediately
       setAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? updatedAttempt : a));
@@ -989,7 +1008,7 @@ export const StudentReports: React.FC = () => {
                   'Score': score,
                   'Total Marks': fullMarks,
                   'Percentage': fullMarks > 0 ? `${((score / fullMarks) * 100).toFixed(2)}%` : 'N/A',
-                  'Status': a.isPublished ? 'Published' : 'Pending'
+                  'Status': isAttemptPublished(a) ? 'Published' : 'Pending'
                 };
               });
               exportToExcel(data, `${selectedStudent.displayName}_History`);
@@ -1140,16 +1159,16 @@ export const StudentReports: React.FC = () => {
                                     {attempt.status === 'graded' ? 'Regrade Subjective' : 'Grade Subjective'}
                                   </Button>
                                   <Button
-                                    variant={attempt.isPublished ? "secondary" : "default"}
+                                    variant={isAttemptPublished(attempt) ? "secondary" : "default"}
                                     size="sm"
-                                    className={!attempt.isPublished ? "bg-green-600 hover:bg-green-700 flex-1 sm:flex-none" : "flex-1 sm:flex-none"}
+                                    className={!isAttemptPublished(attempt) ? "bg-green-600 hover:bg-green-700 flex-1 sm:flex-none" : "flex-1 sm:flex-none"}
                                     onClick={() => handleTogglePublish(attempt)}
                                     disabled={!!isPublishing}
                                   >
                                     {isPublishing === attempt.id ? (
                                       <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
                                     ) : null}
-                                    {attempt.isPublished ? 'Unpublish' : 'Publish'}
+                                    {isAttemptPublished(attempt) ? 'Unpublish' : 'Publish'}
                                   </Button>
                                 </>
                               )}

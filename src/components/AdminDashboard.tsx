@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt, UserProfile } from '../types';
+import { isAttemptPublished } from '../lib/gradingUtils';
 import { metadataCache } from '../lib/metadataCache';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -838,7 +839,7 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
                         <Badge variant={attempt.status === 'graded' ? 'default' : 'secondary'}>
                           {attempt.status === 'submitted' ? 'Pending Grading' : (attempt.score !== undefined ? `${attempt.score} Marks` : attempt.status)}
                         </Badge>
-                        {attempt.isPublished ? (
+                        {isAttemptPublished(attempt) ? (
                           <span className="text-[10px] text-green-600 font-bold flex items-center gap-0.5">
                             <CheckCircle2 className="w-2.5 h-2.5" /> Published
                           </span>
