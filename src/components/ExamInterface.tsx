@@ -7,7 +7,7 @@ import { Exam, ExamAttempt, ActivityLog } from '../types';
 import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
-import { calculateAutoScore, prepareAttemptForSupabase } from '../lib/gradingUtils';
+import { calculateAutoScore, prepareAttemptForSupabase, isQuestionAttempted } from '../lib/gradingUtils';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat } from '../lib/stats';
 import { DriveFileUploader } from './DriveFileUploader';
@@ -620,6 +620,8 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     );
   }
 
+  const attemptedCount = shuffledQuestions.filter(q => isQuestionAttempted(q.id, answers)).length;
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col select-none relative z-10">
       {/* Header */}
@@ -634,7 +636,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         <div className="flex items-center gap-6">
           <div className="hidden md:flex flex-col items-end mr-4">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Progress</p>
-            <p className="text-sm font-bold">{Math.round((Object.keys(answers).length / shuffledQuestions.length) * 100)}% Complete</p>
+            <p className="text-sm font-bold">{Math.round((attemptedCount / (shuffledQuestions.length || 1)) * 100)}% Complete</p>
           </div>
           <div className={`flex items-center gap-2 font-mono text-xl font-bold px-3 py-1 rounded-lg transition-colors ${
             timeLeft < 60 
@@ -662,7 +664,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
       <div className="h-1.5 bg-muted w-full overflow-hidden sticky top-16 z-20">
         <div 
           className="h-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
-          style={{ width: `${(Object.keys(answers).length / shuffledQuestions.length) * 100}%` }}
+          style={{ width: `${(attemptedCount / (shuffledQuestions.length || 1)) * 100}%` }}
         />
       </div>
 
@@ -1010,44 +1012,49 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-center">
                   <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Attempted</p>
-                  <p className="text-xl font-bold text-green-700">{Object.keys(answers).length}</p>
+                  <p className="text-xl font-bold text-green-700">{attemptedCount}</p>
                 </div>
                 <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg text-center">
                   <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Left</p>
-                  <p className="text-xl font-bold text-orange-700">{shuffledQuestions.length - Object.keys(answers).length}</p>
+                  <p className="text-xl font-bold text-orange-700">{shuffledQuestions.length - attemptedCount}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-5 gap-2">
-                {shuffledQuestions.map((q, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setCurrentQuestionIdx(idx);
-                      if (!exam.settings?.showOneAtATime) {
-                        const element = document.getElementById(`question-${q.id}`);
-                        if (element) {
-                          const headerOffset = 100;
-                          const elementPosition = element.getBoundingClientRect().top;
-                          const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-                          window.scrollTo({
-                            top: offsetPosition,
-                            behavior: "smooth"
-                          });
+                {shuffledQuestions.map((q, idx) => {
+                  const isAttempted = isQuestionAttempted(q.id, answers);
+                  const isCurrent = idx === currentQuestionIdx;
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setCurrentQuestionIdx(idx);
+                        if (!exam.settings?.showOneAtATime) {
+                          const element = document.getElementById(`question-${q.id}`);
+                          if (element) {
+                            const headerOffset = 100;
+                            const elementPosition = element.getBoundingClientRect().top;
+                            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+                            window.scrollTo({
+                              top: offsetPosition,
+                              behavior: "smooth"
+                            });
+                          }
                         }
-                      }
-                    }}
-                    className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all ${
-                      idx === currentQuestionIdx 
-                        ? 'border-primary bg-primary text-primary-foreground shadow-md scale-110 z-10' 
-                        : answers[q.id] 
-                          ? 'border-green-500 bg-green-50 text-green-600' 
-                          : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/20'
-                    }`}
-                  >
-                    {idx + 1}
-                  </button>
-                ))}
+                      }}
+                      className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                        isCurrent 
+                          ? 'border-primary bg-primary text-primary-foreground shadow-md scale-110 z-10' 
+                          : isAttempted 
+                            ? 'border-green-500 bg-green-50 text-green-700 font-extrabold' 
+                            : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/20'
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="pt-4 border-t border-border space-y-2">
@@ -1083,8 +1090,22 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Ready to submit?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please make sure you have answered all questions. You cannot change your answers after submission.
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-muted-foreground text-sm">
+                <p>Please review your responses before submitting. You cannot change your answers after submission.</p>
+                <div className="p-3 bg-muted/60 rounded-lg flex items-center justify-between font-medium text-foreground border border-border/50">
+                  <span>Questions Attempted: <strong className="text-teal-700 font-bold">{attemptedCount}</strong> / {shuffledQuestions.length}</span>
+                  {shuffledQuestions.length - attemptedCount > 0 ? (
+                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 font-bold">
+                      {shuffledQuestions.length - attemptedCount} Unattempted
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-bold">
+                      All Attempted
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           

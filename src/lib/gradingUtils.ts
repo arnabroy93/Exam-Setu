@@ -248,6 +248,18 @@ export const isAttemptPublished = (attempt: Partial<ExamAttempt> | null | undefi
   return false;
 };
 
+export const isQuestionAttempted = (questionId: string, answersMap: Record<string, any>): boolean => {
+  if (!answersMap || !(questionId in answersMap)) return false;
+  const val = answersMap[questionId];
+  if (val === undefined || val === null) return false;
+  if (typeof val === 'string') return val.trim().length > 0;
+  if (Array.isArray(val)) return val.length > 0;
+  if (typeof val === 'number') return true;
+  if (typeof val === 'boolean') return true;
+  if (typeof val === 'object') return Object.keys(val).length > 0;
+  return Boolean(val);
+};
+
 export const prepareAttemptForSupabase = (attempt: any): any => {
   if (!attempt) return attempt;
   const published = isAttemptPublished(attempt);
