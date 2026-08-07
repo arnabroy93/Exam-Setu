@@ -83,6 +83,13 @@ export const calculateAutoScore = (questions: Question[], answers: Record<string
   return score;
 };
 
+export const getManualGradesTotal = (manualGrades?: Record<string, any> | null): number => {
+  if (!manualGrades) return 0;
+  return Object.entries(manualGrades)
+    .filter(([key]) => !key.startsWith('_'))
+    .reduce((sum, [_, val]) => sum + (typeof val === 'number' ? val : (Number(val) || 0)), 0);
+};
+
 export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): number => {
   if (attempt.status === 'graded' && attempt.score !== undefined) {
     return attempt.score;
@@ -90,9 +97,7 @@ export const calculateTotalObtained = (attempt: ExamAttempt, exam?: Exam): numbe
 
   const autoScore = attempt.autoScore ?? (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
   
-  const manualTotal = attempt.manualGrades 
-    ? (Object.values(attempt.manualGrades) as any[]).reduce((sum, val) => sum + (Number(val) || 0), 0)
-    : 0;
+  const manualTotal = getManualGradesTotal(attempt.manualGrades);
   
   if (exam && attempt.status === 'submitted') {
     const hasSubjective = exam.questions.some(q => q.type === 'short' || q.type === 'long' || q.type === 'practical');
@@ -125,8 +130,13 @@ export const isAttemptPublished = (attempt: Partial<ExamAttempt> | null | undefi
   if (!attempt) return false;
   if (attempt.isPublished === true) return true;
   if ((attempt as any).is_published === true) return true;
-  if ((attempt.manualGrades as any)?._isPublished === true) return true;
-  if (attempt.answers?._isPublished === true) return true;
+  
+  const mgPub = (attempt.manualGrades as any)?._isPublished;
+  if (mgPub === true || String(mgPub) === 'true') return true;
+
+  const ansPub = (attempt.answers as any)?._isPublished;
+  if (ansPub === true || String(ansPub) === 'true') return true;
+
   return false;
 };
 

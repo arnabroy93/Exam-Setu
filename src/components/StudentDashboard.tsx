@@ -3,6 +3,7 @@ import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Exam, ExamAttempt } from '../types';
 import { metadataCache } from '../lib/metadataCache';
+import { isAttemptPublished } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,11 +35,10 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
       if (cached) {
         try {
           const { availableExams, recentAttempts, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < 3600000) { // 1 hour persistent cache
+          if (Date.now() - timestamp < 300000) { // 5 mins cache preview
             setAvailableExams(availableExams);
             setRecentAttempts(recentAttempts);
             setLoading(false);
-            return;
           }
         } catch (e) {}
       }
@@ -80,6 +80,7 @@ export const StudentDashboard: React.FC<{ onStartExam: (exam: Exam) => void, onV
         const exam = await metadataCache.getExam(attempt.examId);
         return {
           ...attempt,
+          isPublished: isAttemptPublished(attempt),
           examTitle: exam?.title || 'Unknown Exam'
         };
       }));

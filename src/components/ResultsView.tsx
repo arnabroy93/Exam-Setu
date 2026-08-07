@@ -114,10 +114,9 @@ export const ResultsView: React.FC = () => {
       if (cached) {
         try {
           const { data, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < 300000) { // 5 mins cache
+          if (Date.now() - timestamp < 300000) { // 5 mins cache preview
             setAttempts(data);
             setLoading(false);
-            return;
           }
         } catch (e) {
           localStorage.removeItem(cacheKey);
@@ -145,10 +144,17 @@ export const ResultsView: React.FC = () => {
         const enrichedAttempts = await Promise.all(rawAttempts.map(async (attempt) => {
           try {
             const exam = await metadataCache.getExam(attempt.examId);
-            return { ...attempt, exam: exam || undefined };
+            return {
+              ...attempt,
+              isPublished: isAttemptPublished(attempt),
+              exam: exam || undefined
+            };
           } catch (e) {
             console.error('Error enriching attempt:', attempt.id, e);
-            return attempt;
+            return {
+              ...attempt,
+              isPublished: isAttemptPublished(attempt)
+            };
           }
         }));
         

@@ -5,7 +5,7 @@ import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
-import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks, isAttemptPublished, prepareAttemptForSupabase } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks, isAttemptPublished, prepareAttemptForSupabase, getManualGradesTotal } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -173,7 +173,13 @@ export const StudentReports: React.FC = () => {
         for (let i = 0; i < idsToFetch.length; i += 30) {
           const batchIds = idsToFetch.slice(i, i + 30);
           const { data: attemptsData } = await supabase.from('attempts').select('*').in('studentId', batchIds);
-          if (attemptsData) newAttempts = [...newAttempts, ...(attemptsData as any as ExamAttempt[])];
+          if (attemptsData) {
+            const mapped = (attemptsData as any as ExamAttempt[]).map(a => ({
+              ...a,
+              isPublished: isAttemptPublished(a)
+            }));
+            newAttempts = [...newAttempts, ...mapped];
+          }
         }
         
         // Append to existing attempts state (unique only)
@@ -422,6 +428,14 @@ export const StudentReports: React.FC = () => {
         } : a);
       });
       
+      // Invalidate student caches so students immediately see published results
+      attemptsToUpdate.forEach(a => {
+        if (a.studentId) {
+          localStorage.removeItem(`student_results_${a.studentId}`);
+          localStorage.removeItem(`student_dashboard_v2_${a.studentId}`);
+        }
+      });
+
       setSelectedStudentIds([]);
       alert(`Successfully ${publish ? 'published' : 'unpublished'} scores for ${attemptsToUpdate.length} attempts.`);
     } catch (error) {
@@ -801,9 +815,7 @@ export const StudentReports: React.FC = () => {
             ? attempt.autoScore 
             : calculateAutoScore(exam.questions, attempt.answers || {});
           
-          const subjectiveMarks = attempt.manualGrades 
-            ? (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0)
-            : 0;
+          const subjectiveMarks = getManualGradesTotal(attempt.manualGrades);
           
           const totalMarksObtained = calculateTotalObtained(attempt, exam);
           const examFullMarks = calculateEffectiveFullMarks(exam.questions, attempt.status);
@@ -867,14 +879,21 @@ export const StudentReports: React.FC = () => {
   const handleTogglePublish = async (attempt: ExamAttempt) => {
     setIsPublishing(attempt.id);
     try {
-      const newStatus = !isAttemptPublished(attempt);
+      const currentPub = isAttemptPublished(attempt);
+      const newStatus = !currentPub;
       const updatedAnswers = { ...(attempt.answers || {}), _isPublished: newStatus };
       const updatedManualGrades = { ...(attempt.manualGrades || {}), _isPublished: newStatus };
 
-      await supabase.from('attempts').update({
+      const { error } = await supabase.from('attempts').update({
         answers: updatedAnswers,
         manualGrades: updatedManualGrades
       }).eq('id', attempt.id);
+
+      if (error) {
+        console.error('Error toggling publish status in Supabase:', error);
+        alert(`Failed to update publish status: ${error.message}`);
+        return;
+      }
 
       setAttempts(prev => prev.map(a => a.id === attempt.id ? {
         ...a,
@@ -882,6 +901,11 @@ export const StudentReports: React.FC = () => {
         answers: updatedAnswers,
         manualGrades: updatedManualGrades
       } : a));
+
+      if (attempt.studentId) {
+        localStorage.removeItem(`student_results_${attempt.studentId}`);
+        localStorage.removeItem(`student_dashboard_v2_${attempt.studentId}`);
+      }
     } catch (error) {
       console.error('Error toggling publish status:', error);
       alert('Failed to update publish status.');
@@ -892,7 +916,15 @@ export const StudentReports: React.FC = () => {
 
   const handleStartGrading = (attempt: ExamAttempt) => {
     setGradingAttempt(attempt);
-    setManualGrades(attempt.manualGrades || {});
+    const cleanManual: Record<string, number> = {};
+    if (attempt.manualGrades) {
+      Object.entries(attempt.manualGrades).forEach(([k, v]) => {
+        if (!k.startsWith('_')) {
+          cleanManual[k] = Number(v) || 0;
+        }
+      });
+    }
+    setManualGrades(cleanManual);
     setView('grading');
   };
 
@@ -909,11 +941,18 @@ export const StudentReports: React.FC = () => {
         ? gradingAttempt.autoScore 
         : calculateAutoScore(exam.questions, gradingAttempt.answers);
 
-      const manualTotal: number = (Object.values(manualGrades) as any[]).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
-      const totalScore: number = autoScore + manualTotal;
+      const cleanManualGrades: Record<string, number> = {};
+      Object.entries(manualGrades).forEach(([k, v]) => {
+        if (!k.startsWith('_')) {
+          cleanManualGrades[k] = Number(v) || 0;
+        }
+      });
+
+      const manualTotal = getManualGradesTotal(cleanManualGrades);
+      const totalScore = autoScore + manualTotal;
 
       const isPub = isAttemptPublished(gradingAttempt);
-      const updatedManualGrades = { ...manualGrades, _isPublished: isPub };
+      const updatedManualGrades = { ...cleanManualGrades, _isPublished: isPub };
       const updatedAnswers = { ...(gradingAttempt.answers || {}), _isPublished: isPub };
 
       const updatedAttempt: ExamAttempt = {
@@ -930,10 +969,20 @@ export const StudentReports: React.FC = () => {
 
       const payload = prepareAttemptForSupabase(updatedAttempt);
 
-      await supabase.from('attempts').update(payload).eq('id', gradingAttempt.id);
+      const { error: saveErr } = await supabase.from('attempts').update(payload).eq('id', gradingAttempt.id);
+      if (saveErr) {
+        console.error('Error saving manual grades:', saveErr);
+        alert(`Failed to save grades: ${saveErr.message}`);
+        return;
+      }
       
       // Update local attempts state immediately
       setAttempts(prev => prev.map(a => a.id === gradingAttempt.id ? updatedAttempt : a));
+      
+      if (gradingAttempt.studentId) {
+        localStorage.removeItem(`student_results_${gradingAttempt.studentId}`);
+        localStorage.removeItem(`student_dashboard_v2_${gradingAttempt.studentId}`);
+      }
       
       const student = students.find(s => s.uid === gradingAttempt.studentId);
       const action = gradingAttempt.status === 'graded' ? 'REGRADED_EXAM' : 'GRADED_EXAM';
@@ -1075,10 +1124,7 @@ export const StudentReports: React.FC = () => {
                   ? attempt.autoScore 
                   : (exam ? calculateAutoScore(exam.questions, attempt.answers) : 0);
                 
-                let subjectiveMarks = 0;
-                if (attempt.manualGrades) {
-                  subjectiveMarks = (Object.values(attempt.manualGrades) as number[]).reduce((sum, val) => sum + (val || 0), 0);
-                }
+                const subjectiveMarks = getManualGradesTotal(attempt.manualGrades);
 
                 const currentTotalScore = calculateTotalObtained(attempt, exam);
                 const attemptPercentage = examFullMarks > 0 ? (currentTotalScore / examFullMarks) * 100 : 0;
@@ -1304,7 +1350,7 @@ export const StudentReports: React.FC = () => {
                 {(() => {
                   const exam = exams.find(e => e.id === gradingAttempt.examId);
                   const auto = gradingAttempt.autoScore !== undefined ? gradingAttempt.autoScore : (exam ? calculateAutoScore(exam.questions, gradingAttempt.answers) : 0);
-                  const manual = Object.values(manualGrades).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+                  const manual = getManualGradesTotal(manualGrades);
                   const total = exam?.questions.reduce((sum, q) => sum + (q.points || 0), 0) || 0;
                   return `${auto + manual} / ${total}`;
                 })()}
