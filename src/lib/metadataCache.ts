@@ -7,6 +7,8 @@ class MetadataCache {
   private readonly TTL = 10 * 60 * 1000; // 10 minutes
 
   async getUser(uid: string): Promise<UserProfile | null> {
+    if (!uid) return null;
+
     // 1. Memory Cache
     if (this.userCache[uid] && (Date.now() - this.userCache[uid].timestamp < this.TTL)) {
       return this.userCache[uid].profile;
@@ -27,15 +29,22 @@ class MetadataCache {
 
     // 3. Supabase Server
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', uid)
-        .single();
+      const isEmail = uid.includes('@');
+      let query = supabase.from('users').select('*');
+      if (isEmail) {
+        query = query.eq('email', uid);
+      } else {
+        query = query.or(`id.eq.${uid},uid.eq.${uid}`);
+      }
+      
+      const { data, error } = await query.maybeSingle();
         
       if (!error && data) {
-        const profile = { ...data, uid: data.uid || data.id } as UserProfile;
+        const profile = { ...data, uid: data.uid || data.id, id: data.id || data.uid } as UserProfile;
         this.cacheUser(uid, profile);
+        if (data.id) this.cacheUser(data.id, profile);
+        if (data.uid) this.cacheUser(data.uid, profile);
+        if (data.email) this.cacheUser(data.email, profile);
         return profile;
       }
     } catch (error) {

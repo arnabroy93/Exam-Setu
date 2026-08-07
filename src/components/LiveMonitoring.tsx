@@ -122,14 +122,29 @@ export const LiveMonitoring: React.FC = () => {
       const examIds = Array.from(new Set(activeAttempts.map(a => a.examId))) as string[];
 
       const [studentsData, examsData] = await Promise.all([
-        Promise.all(studentIds.map(id => metadataCache.getUser(id))),
+        Promise.all(studentIds.map(async (id) => {
+          let u = await metadataCache.getUser(id);
+          if (!u) {
+            const { data } = await supabase.from('users').select('*').or(`id.eq.${id},uid.eq.${id},email.eq.${id}`).maybeSingle();
+            if (data) {
+              u = { ...data, uid: data.uid || data.id, id: data.id || data.uid } as UserProfile;
+            }
+          }
+          return u;
+        })),
         Promise.all(examIds.map(id => metadataCache.getExam(id)))
       ]);
 
       const studentMap: Record<string, UserProfile> = {};
       const examMap: Record<string, Exam> = {};
 
-      studentsData.forEach(s => { if (s) studentMap[s.uid] = s; });
+      studentsData.forEach(s => { 
+        if (s) {
+          if (s.uid) studentMap[s.uid] = s;
+          if ((s as any).id) studentMap[(s as any).id] = s;
+          if (s.email) studentMap[s.email] = s;
+        } 
+      });
       examsData.forEach(e => { if (e) examMap[e.id] = e; });
 
       setAllStudents(prev => ({ ...prev, ...studentMap }));
@@ -152,12 +167,16 @@ export const LiveMonitoring: React.FC = () => {
     activeAttempts.forEach(attempt => {
       const student = allStudents[attempt.studentId];
       const exam = allExams[attempt.examId];
+      const email = student?.email || (attempt.studentId?.includes('@') ? attempt.studentId : '');
+      const name = student?.displayName || '';
+      const displayIdentifier = email || name || attempt.studentId || 'Unknown Student';
+
       if (attempt.suspiciousActivity) {
         attempt.suspiciousActivity.forEach(log => {
           logs.push({
             log,
-            studentName: student?.displayName || 'Unknown',
-            examTitle: exam?.title || 'Unknown',
+            studentName: displayIdentifier,
+            examTitle: exam?.title || 'Unknown Exam',
             attemptId: attempt.id
           });
         });
@@ -268,17 +287,23 @@ export const LiveMonitoring: React.FC = () => {
                   const exam = allExams[attempt.examId];
                   const progress = calculateProgress(attempt);
                   const suspiciousCount = attempt.suspiciousActivity?.length || 0;
+                  const studentEmail = student?.email || (attempt.studentId?.includes('@') ? attempt.studentId : '');
+                  const studentName = student?.displayName;
+                  const displayEmail = studentEmail || studentName || attempt.studentId || 'Unknown Student';
 
                   return (
                     <div key={attempt.id} className="p-4 rounded-xl border border-border hover:bg-muted/30 transition-colors">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                            {student?.displayName?.[0] || '?'}
+                            {displayEmail[0]?.toUpperCase() || '?'}
                           </div>
                           <div>
-                            <p className="font-bold">{student?.displayName || 'Unknown Student'}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <p className="font-bold text-sm text-foreground">{displayEmail}</p>
+                            {studentName && studentEmail && (
+                              <p className="text-xs text-muted-foreground">{studentName}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                               <BookOpen className="w-3 h-3" />
                               {exam?.title || 'Unknown Exam'}
                             </p>

@@ -347,11 +347,17 @@ export const AdminDashboard: React.FC<{ onAction: (view: any) => void }> = ({ on
       const recentData = (recentRes || []) as any as ExamAttempt[];
       
       const enriched = await Promise.all(recentData.map(async (attempt) => {
-        const student = await metadataCache.getUser(attempt.studentId);
+        let student = await metadataCache.getUser(attempt.studentId);
+        if (!student) {
+          const { data } = await supabase.from('users').select('*').or(`id.eq.${attempt.studentId},uid.eq.${attempt.studentId},email.eq.${attempt.studentId}`).maybeSingle();
+          if (data) {
+            student = { ...data, uid: data.uid || data.id, id: data.id || data.uid } as UserProfile;
+          }
+        }
         const exam = await metadataCache.getExam(attempt.examId);
         return {
           ...attempt,
-          studentName: student?.displayName || 'Unknown Student',
+          studentName: student?.email || student?.displayName || (attempt.studentId?.includes('@') ? attempt.studentId : null) || 'Unknown Student',
           examTitle: exam?.title || 'Unknown Exam'
         };
       }));
