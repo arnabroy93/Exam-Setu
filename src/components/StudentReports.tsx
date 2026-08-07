@@ -5,7 +5,7 @@ import { metadataCache } from '../lib/metadataCache';
 import { useAuth } from '../lib/AuthContext';
 import { logUserActivity } from '../lib/activityLogger';
 import { updateStat, getSystemStats, seedSystemStats } from '../lib/stats';
-import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks, isAttemptPublished, prepareAttemptForSupabase, getManualGradesTotal } from '../lib/gradingUtils';
+import { calculateAutoScore, calculateTotalObtained, isAnswerCorrect, calculateEffectiveFullMarks, isAttemptPublished, prepareAttemptForSupabase, getManualGradesTotal, formatStudentAnswer, formatCorrectAnswer, calculateSJTScore } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -804,10 +804,16 @@ export const StudentReports: React.FC = () => {
           const manualGrade = attempt.manualGrades?.[q.id];
           
           let result = '';
-          if (q.type === 'short' || q.type === 'long') {
+          let marksAwarded = 0;
+          if (q.type === 'short' || q.type === 'long' || q.type === 'practical') {
             result = attempt.status === 'graded' ? 'Manual' : 'Pending';
+            marksAwarded = manualGrade !== undefined ? Number(manualGrade) : 0;
+          } else if (q.type === 'sjt') {
+            marksAwarded = calculateSJTScore(q, studentAnswer);
+            result = marksAwarded > 0 ? 'Awarded Points' : 'Zero Credit';
           } else {
             result = isCorrect ? 'Correct' : 'Incorrect';
+            marksAwarded = isCorrect ? (q.points || 0) : 0;
           }
 
           // Calculate marks for this attempt
@@ -828,10 +834,10 @@ export const StudentReports: React.FC = () => {
             'Question No': idx + 1,
             'Question Type': q.type.toUpperCase(),
             'Question Text': q.text,
-            'Student Response': Array.isArray(studentAnswer) ? studentAnswer.join(', ') : (studentAnswer || 'No response'),
-            'Model Answer/Correct Key': Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A'),
+            'Student Response': formatStudentAnswer(q, studentAnswer),
+            'Model Answer/Correct Key': formatCorrectAnswer(q),
             'Result': result,
-            'Marks Awarded': result === 'Manual' ? (manualGrade || 0) : (isCorrect ? (q.points || 0) : 0),
+            'Marks Awarded': marksAwarded,
             'Max Marks': q.points || 0,
             'MCQ Marks': mcqMarks,
             'Subjective Marks': subjectiveMarks,
@@ -1426,7 +1432,7 @@ export const StudentReports: React.FC = () => {
                           </div>
                         ) : (
                           <p className="text-base leading-relaxed whitespace-pre-wrap">
-                            {gradingAttempt.answers[q.id] || <span className="italic text-muted-foreground">No answer provided by the student.</span>}
+                            {formatStudentAnswer(q, gradingAttempt.answers[q.id])}
                           </p>
                         )}
                       </div>

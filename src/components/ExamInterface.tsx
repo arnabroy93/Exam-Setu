@@ -759,6 +759,60 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
                       />
                     </div>
                   )}
+
+                  {currentQuestion.type === 'sjt' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs font-semibold">
+                        <span>Situational Judgement Test</span>
+                        <Badge variant="outline" className="bg-white text-teal-800 border-teal-300 font-bold">
+                          {currentQuestion.allowMultipleSJT ? 'Multiple Selections Allowed' : 'Single Option Selection'}
+                        </Badge>
+                      </div>
+
+                      <div className="grid gap-3">
+                        {currentQuestion.options?.map((opt, idx) => {
+                          const isSelected = currentQuestion.allowMultipleSJT
+                            ? (Array.isArray(answers[currentQuestion.id]) && (answers[currentQuestion.id].includes(idx) || answers[currentQuestion.id].includes(opt) || answers[currentQuestion.id].includes(String(idx))))
+                            : (answers[currentQuestion.id] === idx || answers[currentQuestion.id] === opt || String(answers[currentQuestion.id]) === String(idx));
+
+                          const handleSelect = () => {
+                            if (currentQuestion.allowMultipleSJT) {
+                              const currentAnswers = Array.isArray(answers[currentQuestion.id]) ? [...answers[currentQuestion.id]] : (answers[currentQuestion.id] !== undefined ? [answers[currentQuestion.id]] : []);
+                              const answerIndex = currentAnswers.findIndex(a => a === idx || a === opt || String(a) === String(idx));
+                              if (answerIndex > -1) {
+                                currentAnswers.splice(answerIndex, 1);
+                              } else {
+                                currentAnswers.push(idx);
+                              }
+                              setAnswers({ ...answers, [currentQuestion.id]: currentAnswers });
+                            } else {
+                              setAnswers({ ...answers, [currentQuestion.id]: idx });
+                            }
+                          };
+
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={handleSelect}
+                              className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all text-left ${
+                                isSelected 
+                                  ? 'border-teal-600 bg-teal-50/70 shadow-xs' 
+                                  : 'border-border hover:border-teal-300 hover:bg-teal-50/30'
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-sm shrink-0 ${
+                                isSelected ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-300 text-slate-600'
+                              }`}>
+                                {String.fromCharCode(65 + idx)}
+                              </div>
+                              <span className="text-base text-slate-800 font-medium leading-snug">{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

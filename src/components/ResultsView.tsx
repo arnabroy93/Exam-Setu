@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { ExamAttempt, Exam } from '../types';
 import { metadataCache } from '../lib/metadataCache';
-import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, calculateSJTScore, isAttemptPublished } from '../lib/gradingUtils';
+import { isAnswerCorrect, calculateTotalObtained, calculateEffectiveFullMarks, calculateSJTScore, isAttemptPublished, formatStudentAnswer, formatCorrectAnswer } from '../lib/gradingUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -64,14 +64,16 @@ export const ResultsView: React.FC = () => {
       const manualMarks = selectedAttempt.manualGrades?.[q.id];
       
       let marksAwarded = '0';
-      if (q.type === 'short' || q.type === 'long') {
+      if (q.type === 'short' || q.type === 'long' || q.type === 'practical') {
         marksAwarded = manualMarks !== undefined ? manualMarks.toString() : 'Pending';
+      } else if (q.type === 'sjt') {
+        marksAwarded = calculateSJTScore(q, studentAnswer).toString();
       } else {
         marksAwarded = isCorrect ? q.points.toString() : '0';
       }
 
-      const answerText = Array.isArray(studentAnswer) ? studentAnswer.join(', ') : (studentAnswer || 'No response');
-      const correctText = Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : (q.correctAnswer || 'N/A');
+      const answerText = formatStudentAnswer(q, studentAnswer);
+      const correctText = formatCorrectAnswer(q);
 
       return [
         idx + 1,
@@ -365,8 +367,8 @@ export const ResultsView: React.FC = () => {
                               {q.options?.map((opt, optIdx) => {
                                 const mark = q.optionMarks?.[optIdx] ?? 0;
                                 const isSelected = q.allowMultipleSJT
-                                  ? (Array.isArray(studentAnswer) && (studentAnswer.includes(optIdx) || studentAnswer.includes(opt)))
-                                  : (studentAnswer === optIdx || studentAnswer === opt);
+                                  ? (Array.isArray(studentAnswer) && (studentAnswer.includes(optIdx) || studentAnswer.includes(opt) || studentAnswer.includes(String(optIdx))))
+                                  : (studentAnswer === optIdx || studentAnswer === opt || String(studentAnswer) === String(optIdx));
 
                                 return (
                                   <div 
@@ -412,14 +414,14 @@ export const ResultsView: React.FC = () => {
                                 </a>
                               </div>
                             ) : (
-                              <p>{studentAnswer || <span className="italic text-muted-foreground">No answer</span>}</p>
+                              <p className="font-medium text-slate-900">{formatStudentAnswer(q, studentAnswer)}</p>
                             )}
                           </div>
                           {(q.type === 'mcq' || q.type === 'boolean') && (
                             <div className="p-2 rounded bg-green-500/5 border border-green-500/10">
                               <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Correct Answer:</p>
                               <p className="text-green-700 font-medium">
-                                {Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer}
+                                {formatCorrectAnswer(q)}
                               </p>
                             </div>
                           )}

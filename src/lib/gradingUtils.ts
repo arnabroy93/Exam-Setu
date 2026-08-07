@@ -48,14 +48,33 @@ export const isAnswerCorrect = (question: Question, studentAnswer: any): boolean
 
   if (!question.correctAnswer) return false;
   
+  const options = question.options || [];
+  const normalizeVal = (val: any): string => {
+    if (options.length > 0) {
+      if (typeof val === 'number' && val >= 0 && val < options.length) {
+        return options[val].trim().toLowerCase();
+      }
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        const num = Number(trimmed);
+        if (!isNaN(num) && num >= 0 && num < options.length && String(Math.floor(num)) === trimmed) {
+          return options[num].trim().toLowerCase();
+        }
+      }
+    }
+    return String(val).trim().toLowerCase();
+  };
+
   if (question.type === 'mcq' || question.type === 'boolean') {
     if (Array.isArray(question.correctAnswer)) {
+      const correctNorms = question.correctAnswer.map(normalizeVal);
       if (!Array.isArray(studentAnswer)) {
-        return question.correctAnswer.includes(studentAnswer);
+        return correctNorms.includes(normalizeVal(studentAnswer));
       }
-      return JSON.stringify([...studentAnswer].sort()) === JSON.stringify([...question.correctAnswer].sort());
+      const studentNorms = studentAnswer.map(normalizeVal);
+      return JSON.stringify([...studentNorms].sort()) === JSON.stringify([...correctNorms].sort());
     }
-    return studentAnswer === question.correctAnswer;
+    return normalizeVal(studentAnswer) === normalizeVal(question.correctAnswer);
   }
   
   if (question.type === 'fill') {
@@ -67,6 +86,95 @@ export const isAnswerCorrect = (question: Question, studentAnswer: any): boolean
   }
   
   return false;
+};
+
+export const formatStudentAnswer = (question: Question, studentAnswer: any): string => {
+  if (studentAnswer === undefined || studentAnswer === null || studentAnswer === '') {
+    return 'No response';
+  }
+
+  if (typeof studentAnswer === 'object' && !Array.isArray(studentAnswer)) {
+    if (studentAnswer.name) return String(studentAnswer.name);
+    if (studentAnswer.title) return String(studentAnswer.title);
+    return JSON.stringify(studentAnswer);
+  }
+
+  const options = question.options || [];
+
+  const resolveSingleValue = (val: any): string => {
+    if (val === undefined || val === null || val === '') return 'No response';
+    
+    if (options.length > 0) {
+      if (typeof val === 'number' && val >= 0 && val < options.length) {
+        return options[val];
+      }
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        const num = Number(trimmed);
+        if (!isNaN(num) && num >= 0 && num < options.length && String(Math.floor(num)) === trimmed) {
+          return options[num];
+        }
+      }
+    }
+    return String(val);
+  };
+
+  if (Array.isArray(studentAnswer)) {
+    if (studentAnswer.length === 0) return 'No response';
+    const resolved = studentAnswer.map(resolveSingleValue).filter(s => s && s !== 'No response');
+    return resolved.length > 0 ? resolved.join('; ') : 'No response';
+  }
+
+  return resolveSingleValue(studentAnswer);
+};
+
+export const formatCorrectAnswer = (question: Question): string => {
+  const options = question.options || [];
+  const optionMarks = question.optionMarks || [];
+
+  if (question.type === 'sjt') {
+    if (options.length > 0) {
+      return options
+        .map((opt, i) => {
+          const m = optionMarks[i] ?? 0;
+          const markStr = m >= 0 ? `+${m}` : `${m}`;
+          return `${String.fromCharCode(65 + i)}. ${opt} [${markStr} pts]`;
+        })
+        .join(' | ');
+    }
+    return 'Situational Judgement Scoring';
+  }
+
+  if (question.type === 'short' || question.type === 'long' || question.type === 'practical') {
+    if (question.correctAnswer) {
+      return Array.isArray(question.correctAnswer) ? question.correctAnswer.join('; ') : String(question.correctAnswer);
+    }
+    return 'Subjective Evaluation / Rubric';
+  }
+
+  if (question.correctAnswer !== undefined && question.correctAnswer !== null) {
+    const resolveAns = (val: any) => {
+      if (options.length > 0) {
+        if (typeof val === 'number' && val >= 0 && val < options.length) {
+          return options[val];
+        }
+        if (typeof val === 'string') {
+          const num = Number(val.trim());
+          if (!isNaN(num) && num >= 0 && num < options.length && String(Math.floor(num)) === val.trim()) {
+            return options[num];
+          }
+        }
+      }
+      return String(val);
+    };
+
+    if (Array.isArray(question.correctAnswer)) {
+      return question.correctAnswer.map(resolveAns).join('; ');
+    }
+    return resolveAns(question.correctAnswer);
+  }
+
+  return 'N/A';
 };
 
 export const calculateAutoScore = (questions: Question[], answers: Record<string, any>): number => {
