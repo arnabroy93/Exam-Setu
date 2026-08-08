@@ -45,8 +45,23 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
+  const [isMobilePaletteOpen, setIsMobilePaletteOpen] = useState(false);
   const [lastLog, setLastLog] = useState<ActivityLog | null>(null);
   const lastSyncRef = React.useRef<{ answers: Record<string, any>, logsCount: number }>({ answers: {}, logsCount: 0 });
+
+  const navigateToQuestion = useCallback((idx: number, questionId: string) => {
+    setCurrentQuestionIdx(idx);
+    if (exam.settings?.showOneAtATime) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      const element = document.getElementById(`question-${questionId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  }, [exam.settings?.showOneAtATime]);
 
   const answersRef = React.useRef(answers);
   const logsRef = React.useRef(logs);
@@ -626,11 +641,20 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     <div className="min-h-screen bg-transparent flex flex-col select-none relative z-10">
       {/* Header */}
       <header className="h-16 border-b border-teal-100/40 bg-white/40 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-20">
-        <div className="flex items-center gap-4">
-          <h1 className="font-bold text-lg">{exam.title}</h1>
-          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+        <div className="flex items-center gap-3">
+          <h1 className="font-bold text-lg hidden sm:block">{exam.title}</h1>
+          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 shrink-0">
             Question {currentQuestionIdx + 1} of {shuffledQuestions.length}
           </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden flex items-center gap-1.5 border-teal-200 bg-teal-50/80 text-teal-800 hover:bg-teal-100 font-bold shrink-0"
+            onClick={() => setIsMobilePaletteOpen(true)}
+          >
+            <LayoutGrid className="w-4 h-4 text-teal-700" />
+            <span className="text-xs">Palette ({attemptedCount}/{shuffledQuestions.length})</span>
+          </Button>
         </div>
         
         <div className="flex items-center gap-6">
@@ -851,7 +875,7 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
           ) : (
             <div className="space-y-8">
               {shuffledQuestions.map((q, qIdx) => (
-                <Card key={q.id} id={`question-${q.id}`} className="border-2 border-primary/10 shadow-lg">
+                <Card key={q.id} id={`question-${q.id}`} className="border-2 border-primary/10 shadow-lg scroll-mt-28">
                   <CardHeader className="pb-4">
                     <div className="flex justify-between items-start">
                       <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Question {qIdx + 1}</span>
@@ -1000,81 +1024,77 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         </div>
 
         {/* Question Palette Sidebar */}
-        <aside className="lg:col-span-1 space-y-6">
-          <Card className="border-2 border-primary/10 shadow-lg sticky top-24">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <LayoutGrid className="w-5 h-5 text-primary" />
-                Question Palette
+        <aside className="lg:col-span-1 h-fit sticky top-24 self-start z-10 w-full">
+          <Card className="border-2 border-primary/10 shadow-lg max-h-[calc(100vh-7rem)] flex flex-col bg-white/95 backdrop-blur-md overflow-hidden">
+            <CardHeader className="pb-3 border-b border-border/40 shrink-0">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5 text-primary" />
+                  Question Palette
+                </span>
+                <Badge variant="secondary" className="font-mono text-xs">
+                  {attemptedCount}/{shuffledQuestions.length}
+                </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-center">
-                  <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Attempted</p>
-                  <p className="text-xl font-bold text-green-700">{attemptedCount}</p>
+            <CardContent className="space-y-5 p-4 overflow-y-auto flex-1 max-h-[calc(100vh-12rem)]">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-2.5 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <p className="text-[10px] uppercase font-bold text-green-700 tracking-wider">Attempted</p>
+                  <p className="text-xl font-bold text-green-800">{attemptedCount}</p>
                 </div>
-                <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg text-center">
-                  <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Left</p>
-                  <p className="text-xl font-bold text-orange-700">{shuffledQuestions.length - attemptedCount}</p>
+                <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-lg text-center">
+                  <p className="text-[10px] uppercase font-bold text-orange-700 tracking-wider">Unattempted</p>
+                  <p className="text-xl font-bold text-orange-800">{shuffledQuestions.length - attemptedCount}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
-                {shuffledQuestions.map((q, idx) => {
-                  const isAttempted = isQuestionAttempted(q.id, answers);
-                  const isCurrent = idx === currentQuestionIdx;
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Select Question</p>
+                <div className="grid grid-cols-5 gap-2 max-h-[280px] overflow-y-auto p-1.5 border border-slate-100 rounded-lg bg-slate-50/50">
+                  {shuffledQuestions.map((q, idx) => {
+                    const isAttempted = isQuestionAttempted(q.id, answers);
+                    const isCurrent = idx === currentQuestionIdx;
 
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setCurrentQuestionIdx(idx);
-                        if (!exam.settings?.showOneAtATime) {
-                          const element = document.getElementById(`question-${q.id}`);
-                          if (element) {
-                            const headerOffset = 100;
-                            const elementPosition = element.getBoundingClientRect().top;
-                            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-                            window.scrollTo({
-                              top: offsetPosition,
-                              behavior: "smooth"
-                            });
-                          }
-                        }
-                      }}
-                      className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all ${
-                        isCurrent 
-                          ? 'border-primary bg-primary text-primary-foreground shadow-md scale-110 z-10' 
-                          : isAttempted 
-                            ? 'border-green-500 bg-green-50 text-green-700 font-extrabold' 
-                            : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/20'
-                      }`}
-                    >
-                      {idx + 1}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => navigateToQuestion(idx, q.id)}
+                        className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all cursor-pointer ${
+                          isCurrent 
+                            ? 'border-primary bg-primary text-primary-foreground shadow-md scale-105 z-10 ring-2 ring-primary/30' 
+                            : isAttempted 
+                              ? 'border-green-500 bg-green-50 text-green-700 font-extrabold hover:bg-green-100' 
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-primary/40 hover:bg-slate-100'
+                        }`}
+                        title={`Navigate to Question ${idx + 1}`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="pt-4 border-t border-border space-y-2">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="pt-3 border-t border-border space-y-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded bg-primary" />
-                  <span>Current</span>
+                  <span>Current Question</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded bg-green-50 border border-green-500" />
                   <span>Attempted</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="w-3 h-3 rounded bg-muted/30 border border-border" />
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded bg-white border border-slate-200" />
                   <span>Unattempted</span>
                 </div>
               </div>
 
               <Button 
-                variant="outline" 
-                className="w-full mt-4" 
+                variant="default" 
+                className="w-full mt-2 font-semibold" 
                 onClick={() => setIsSubmitDialogOpen(true)}
                 disabled={isSubmitting}
               >
@@ -1085,6 +1105,96 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
           </Card>
         </aside>
       </main>
+
+      {/* Mobile Question Palette Modal Overlay */}
+      {isMobilePaletteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 lg:hidden">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-5 max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-2 font-bold text-lg text-slate-900">
+                <LayoutGrid className="w-5 h-5 text-primary" />
+                <span>Question Palette</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsMobilePaletteOpen(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-center">
+                  <p className="text-[10px] uppercase font-bold text-green-700 tracking-wider">Attempted</p>
+                  <p className="text-2xl font-bold text-green-800">{attemptedCount}</p>
+                </div>
+                <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl text-center">
+                  <p className="text-[10px] uppercase font-bold text-orange-700 tracking-wider">Unattempted</p>
+                  <p className="text-2xl font-bold text-orange-800">{shuffledQuestions.length - attemptedCount}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Select Question</p>
+                <div className="grid grid-cols-5 gap-2 max-h-[260px] overflow-y-auto p-2 border border-slate-100 rounded-xl bg-slate-50">
+                  {shuffledQuestions.map((q, idx) => {
+                    const isAttempted = isQuestionAttempted(q.id, answers);
+                    const isCurrent = idx === currentQuestionIdx;
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setIsMobilePaletteOpen(false);
+                          navigateToQuestion(idx, q.id);
+                        }}
+                        className={`w-full aspect-square rounded-lg border-2 flex items-center justify-center text-xs font-bold transition-all cursor-pointer ${
+                          isCurrent 
+                            ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/30' 
+                            : isAttempted 
+                              ? 'border-green-500 bg-green-50 text-green-700 font-extrabold' 
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-primary/40'
+                        }`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-primary" />
+                  <span>Current</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-green-50 border border-green-500" />
+                  <span>Attempted</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded bg-white border border-slate-200" />
+                  <span>Unattempted</span>
+                </div>
+              </div>
+            </div>
+
+            <Button 
+              className="w-full h-11 shrink-0 mt-2 font-semibold" 
+              onClick={() => {
+                setIsMobilePaletteOpen(false);
+                setIsSubmitDialogOpen(true);
+              }}
+            >
+              <Send className="mr-2 w-4 h-4" />
+              Finish & Submit Exam
+            </Button>
+          </div>
+        </div>
+      )}
 
       <AlertDialog open={isSubmitDialogOpen} onOpenChange={(open) => !isSubmitting && setIsSubmitDialogOpen(open)}>
         <AlertDialogContent>
