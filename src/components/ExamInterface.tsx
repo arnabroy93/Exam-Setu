@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Exam, ExamAttempt, ActivityLog } from '../types';
-import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X } from 'lucide-react';
+import { Timer, AlertTriangle, ChevronLeft, ChevronRight, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2, Circle, LayoutGrid, X, Maximize2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { calculateAutoScore, prepareAttemptForSupabase, isQuestionAttempted } from '../lib/gradingUtils';
@@ -384,22 +384,44 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
     };
   }, [addLog]);
 
-  // Anti-cheating: Full-screen exit detection
+  // Anti-cheating: Full-screen exit and status tracking
   useEffect(() => {
-    if (!exam.settings?.enableAntiCheating || !hasStarted) return;
+    if (!hasStarted) return;
 
     const handleFullScreenChange = () => {
-      if (!document.fullscreenElement) {
-        addLog('fullscreen-exit', 'User exited full-screen mode');
+      const isCurrentlyFS = !!(document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).msFullscreenElement);
+      if (!isCurrentlyFS) {
+        if (exam.settings?.enableAntiCheating) {
+          addLog('fullscreen-exit', 'User exited full-screen mode');
+        }
         setIsFullScreen(false);
+      } else {
+        setIsFullScreen(true);
       }
     };
 
     document.addEventListener('fullscreenchange', handleFullScreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+    document.addEventListener('msfullscreenchange', handleFullScreenChange);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullScreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullScreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullScreenChange);
     };
   }, [addLog, exam.settings?.enableAntiCheating, hasStarted]);
+
+  const reEnterFullScreen = async () => {
+    const elem = document.documentElement as any;
+    const requestFS = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+    if (requestFS) {
+      try {
+        await requestFS.call(elem);
+      } catch (err) {
+        console.error("Error attempting to re-enable full-screen mode:", err);
+      }
+    }
+    setIsFullScreen(true);
+  };
 
   // Timer logic
   useEffect(() => {
@@ -658,7 +680,21 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
         </div>
         
         <div className="flex items-center gap-6">
-          <div className="hidden md:flex flex-col items-end mr-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={reEnterFullScreen}
+            className={`hidden sm:flex items-center gap-1.5 text-xs font-bold shrink-0 transition-all ${
+              isFullScreen 
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' 
+                : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 animate-pulse'
+            }`}
+            title={isFullScreen ? "Full-screen mode is active" : "Click to enter full-screen mode"}
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{isFullScreen ? 'Full Screen Active' : 'Enter Full Screen'}</span>
+          </Button>
+          <div className="hidden md:flex flex-col items-end mr-2">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Progress</p>
             <p className="text-sm font-bold">{Math.round((attemptedCount / (shuffledQuestions.length || 1)) * 100)}% Complete</p>
           </div>
@@ -1193,6 +1229,33 @@ export const ExamInterface: React.FC<{ exam: Exam, onFinish: () => void }> = ({ 
               Finish & Submit Exam
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Force Full-Screen Mode Modal Overlay */}
+      {hasStarted && !isSubmitted && !isFullScreen && exam.settings?.enableAntiCheating && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <Card className="max-w-md w-full p-6 text-center space-y-5 bg-white border-2 border-red-200 shadow-2xl rounded-2xl">
+            <div className="mx-auto w-14 h-14 bg-red-100 rounded-full flex items-center justify-center">
+              <ShieldAlert className="w-7 h-7 text-red-600" />
+            </div>
+            <div className="space-y-2">
+              <CardTitle className="text-xl font-black text-slate-900">Full-Screen Mode Required</CardTitle>
+              <p className="text-slate-600 text-xs leading-relaxed">
+                Anti-cheating security is active for this exam. Exiting full-screen mode has been recorded in your activity log.
+              </p>
+            </div>
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-800 font-semibold">
+              Your exam is paused. Click below to restore full-screen mode and resume answering questions.
+            </div>
+            <Button 
+              onClick={reEnterFullScreen} 
+              className="w-full h-11 text-sm font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-lg shadow-teal-600/20 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Maximize2 className="w-4 h-4" />
+              Return to Full-Screen Mode
+            </Button>
+          </Card>
         </div>
       )}
 
