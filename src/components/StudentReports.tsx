@@ -657,44 +657,47 @@ export const StudentReports: React.FC = () => {
         currentExams = await metadataCache.getExamsList();
       }
 
-      const calculatedData = exportStudents.map(s => {
-        const studentAttempts = exportAttempts.filter(a => a.studentId === s.uid && (a.status === 'submitted' || a.status === 'graded'));
-        const attemptsByExam: Record<string, ExamAttempt> = {};
+      const calculatedData: any[] = [];
+
+      exportStudents.forEach(s => {
+        let studentAttempts = exportAttempts.filter(a => a.studentId === s.uid && (a.status === 'submitted' || a.status === 'graded'));
         
+        // Filter based on selectedExamFilter to only generate the report for the selected exam title
+        if (selectedExamFilter !== 'all') {
+          studentAttempts = studentAttempts.filter(a => a.examId === selectedExamFilter);
+        }
+
         studentAttempts.forEach(attempt => {
           const exam = currentExams.find(e => e.id === attempt.examId);
           if (!exam) return;
-          const currentBest = attemptsByExam[attempt.examId];
+
           const attemptScore = calculateTotalObtained(attempt, exam);
-          const currentBestScore = currentBest ? calculateTotalObtained(currentBest, currentExams.find(e => e.id === currentBest.examId)) : -1;
+          const examFullMarks = calculateEffectiveFullMarks(exam.questions, attempt.status);
+          const percentage = examFullMarks > 0 ? (attemptScore / examFullMarks) * 100 : 0;
           
-          if (!currentBest || attemptScore > currentBestScore) {
-            attemptsByExam[attempt.examId] = attempt;
-          }
+          // Formatted attempted date and time clearly
+          const attemptedDateTime = attempt.startTime 
+            ? new Date(attempt.startTime).toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              }) 
+            : 'N/A';
+
+          calculatedData.push({
+            'Student Name': s.displayName || 'Unknown Student',
+            'Email': s.email || 'N/A',
+            'Exam Title': exam.title || 'Unknown Exam',
+            'Attempted Date & Time': attemptedDateTime,
+            'Marks Obtained': attemptScore,
+            'Full Marks': examFullMarks,
+            'Percentage': `${percentage.toFixed(2)}%`,
+            'Status': attempt.status === 'graded' ? 'Graded' : 'Submitted (Pending Grading)'
+          });
         });
-
-        let totalScore = 0;
-        let totalFullMarks = 0;
-
-        Object.values(attemptsByExam).forEach(attempt => {
-          const exam = currentExams.find(e => e.id === attempt.examId);
-          if (exam) {
-            const examFullMarks = calculateEffectiveFullMarks(exam.questions, attempt.status);
-            totalFullMarks += examFullMarks;
-            totalScore += calculateTotalObtained(attempt, exam);
-          }
-        });
-
-        const percentage = totalFullMarks > 0 ? (totalScore / totalFullMarks) * 100 : 0;
-
-        return {
-          'Student Name': s.displayName,
-          'Email': s.email,
-          'Exams Taken': studentAttempts.length,
-          'Total Marks Obtained': totalScore,
-          'Full Marks': totalFullMarks,
-          'Overall Percentage': `${percentage.toFixed(2)}%`
-        };
       });
 
       return calculatedData;
@@ -710,9 +713,21 @@ export const StudentReports: React.FC = () => {
     const data = await getExportData();
     if (data.length === 0) return;
 
-    if (format === 'excel') exportToExcel(data, 'All_Students_Report');
-    else if (format === 'csv') exportToCSV(data, 'All_Students_Report');
-    else exportToPDF(data, 'All Students Performance Report', 'All_Students_Report');
+    let currentExams = exams;
+    if (currentExams.length === 0) {
+      currentExams = await metadataCache.getExamsList();
+    }
+    const selectedExamObj = currentExams.find(e => e.id === selectedExamFilter);
+    const reportTitle = selectedExamObj 
+      ? `${selectedExamObj.title} Performance Report` 
+      : 'All Students Performance Report';
+    const fileName = selectedExamObj 
+      ? `Student_Report_${selectedExamObj.title.replace(/[^a-zA-Z0-9]/g, '_')}` 
+      : 'All_Students_Report';
+
+    if (format === 'excel') exportToExcel(data, fileName);
+    else if (format === 'csv') exportToCSV(data, fileName);
+    else exportToPDF(data, reportTitle, fileName);
   };
 
   const handleResponseDownload = async () => {
@@ -1052,21 +1067,34 @@ export const StudentReports: React.FC = () => {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => {
-              const studentAttempts = attempts.filter(a => a.studentId === selectedStudent.uid && (a.status === 'submitted' || a.status === 'graded'));
+              let studentAttempts = attempts.filter(a => a.studentId === selectedStudent.uid && (a.status === 'submitted' || a.status === 'graded'));
+              if (selectedExamFilter !== 'all') {
+                studentAttempts = studentAttempts.filter(a => a.examId === selectedExamFilter);
+              }
               const data = studentAttempts.map(a => {
                 const exam = exams.find(e => e.id === a.examId);
                 const fullMarks = exam ? calculateEffectiveFullMarks(exam.questions, a.status) : 0;
                 const score = calculateTotalObtained(a, exam);
                 return {
-                  'Exam': exam?.title || 'Unknown',
-                  'Date': new Date(a.endTime || a.startTime).toLocaleString(),
-                  'Score': score,
+                  'Exam Title': exam?.title || 'Unknown',
+                  'Attempted Date & Time': new Date(a.endTime || a.startTime).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                  }),
+                  'Score Obtained': score,
                   'Total Marks': fullMarks,
                   'Percentage': fullMarks > 0 ? `${((score / fullMarks) * 100).toFixed(2)}%` : 'N/A',
                   'Status': isAttemptPublished(a) ? 'Published' : 'Pending'
                 };
               });
-              exportToExcel(data, `${selectedStudent.displayName}_History`);
+              const examSuffix = selectedExamFilter !== 'all' && exams.find(e => e.id === selectedExamFilter)
+                ? `_${exams.find(e => e.id === selectedExamFilter)?.title.replace(/[^a-zA-Z0-9]/g, '_')}`
+                : '_All_Exams';
+              exportToExcel(data, `${selectedStudent.displayName}_History${examSuffix}`);
             }}>
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Export History
